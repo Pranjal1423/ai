@@ -39,7 +39,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	private const SECRET_CONTEXT = array( 'plugin' => 'ai' );
 
 	/**
-	 * @var Key_Encryption
+	 * @var \WordPress\AI\Experiments\Key_Encryption\Key_Encryption
 	 */
 	private Key_Encryption $experiment;
 
@@ -291,6 +291,41 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests Secrets_Bridge get_secret, set_secret, and delete_secret methods.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_get_set_delete() {
+		$bridge = Key_Encryption::get_bridge();
+
+		$this->assertTrue( $bridge->set_secret( self::SECRET_KEY, 'sk-bridge-test' ) );
+		$this->assertSame( 'sk-bridge-test', $bridge->get_secret( self::SECRET_KEY ) );
+
+		$this->assertTrue( $bridge->delete_secret( self::SECRET_KEY ) );
+		$this->assertNull( $bridge->get_secret( self::SECRET_KEY ) );
+	}
+
+	/**
+	 * Tests maybe_migrate_legacy_secrets safely handles legacy rows.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_maybe_migrate_legacy_secrets() {
+		$bridge = Key_Encryption::get_bridge();
+
+		// Setting a legacy secret.
+		Secrets::set( self::SECRET_KEY, 'sk-legacy-to-migrate', self::SECRET_CONTEXT );
+		$this->assertSame( 'sk-legacy-to-migrate', $bridge->get_secret( self::SECRET_KEY ) );
+
+		// Run migration routine.
+		$migrated = $bridge->maybe_migrate_legacy_secrets();
+		$this->assertGreaterThanOrEqual( 0, $migrated );
+
+		// Value is still readable.
+		$this->assertSame( 'sk-legacy-to-migrate', $bridge->get_secret( self::SECRET_KEY ) );
+	}
+
+	/**
 	 * Returns the decrypted secret value for the test connector, or null if none is stored.
 	 *
 	 * @since 1.1.0
@@ -346,19 +381,21 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 			$this->markTestSkipped( 'WordPress Connectors API is unavailable.' );
 		}
 
-		if ( ! $registry->is_registered( self::CONNECTOR_ID ) ) {
-			$registry->register(
-				self::CONNECTOR_ID,
-				array(
-					'name'           => 'Test Provider',
-					'description'    => 'Fake provider for Key_Encryption tests.',
-					'type'           => 'ai_provider',
-					'authentication' => array(
-						'method'       => 'api_key',
-						'setting_name' => self::SETTING_NAME,
-					),
-				)
-			);
+		if ( $registry->is_registered( self::CONNECTOR_ID ) ) {
+			return;
 		}
+
+		$registry->register(
+			self::CONNECTOR_ID,
+			array(
+				'name'           => 'Test Provider',
+				'description'    => 'Fake provider for Key_Encryption tests.',
+				'type'           => 'ai_provider',
+				'authentication' => array(
+					'method'       => 'api_key',
+					'setting_name' => self::SETTING_NAME,
+				),
+			)
+		);
 	}
 }

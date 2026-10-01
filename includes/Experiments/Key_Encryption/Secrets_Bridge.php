@@ -60,6 +60,11 @@ final class Secrets_Bridge {
 	 * @since 1.1.0
 	 */
 	public function register_option_filters(): void {
+		// Transparently migrate any legacy prototype secrets if the new Secrets API is present.
+		if ( function_exists( 'wp_set_secret' ) && function_exists( 'wp_get_secret' ) ) {
+			$this->maybe_migrate_legacy_secrets();
+		}
+
 		foreach ( $this->get_connector_setting_names() as $setting_name ) {
 			$write_hook   = "pre_update_option_{$setting_name}";
 			$read_hook    = "option_{$setting_name}";
@@ -128,13 +133,13 @@ final class Secrets_Bridge {
 
 			$secret_key = $this->secret_key( $connector_id );
 
-			$stored = Secrets::set( $secret_key, $plaintext, $this->secret_context() );
+			$stored = $this->set_secret( $secret_key, $plaintext );
 			if ( ! $stored ) {
 				continue;
 			}
 
 			// Verify the secret actually persisted before we drop the plaintext.
-			if ( Secrets::get( $secret_key, $this->secret_context() ) !== $plaintext ) {
+			if ( $this->get_secret( $secret_key ) !== $plaintext ) {
 				continue;
 			}
 
@@ -173,13 +178,13 @@ final class Secrets_Bridge {
 
 		$count = 0;
 		foreach ( $this->get_connector_setting_names() as $connector_id => $setting_name ) {
-			$plaintext = Secrets::get( $this->secret_key( $connector_id ), $this->secret_context() );
+			$plaintext = $this->get_secret( $this->secret_key( $connector_id ) );
 			if ( null === $plaintext || '' === $plaintext ) {
 				continue;
 			}
 
 			update_option( $setting_name, $plaintext );
-			Secrets::delete( $this->secret_key( $connector_id ), $this->secret_context() );
+			$this->delete_secret( $this->secret_key( $connector_id ) );
 			++$count;
 		}
 
@@ -215,7 +220,7 @@ final class Secrets_Bridge {
 			return $value;
 		}
 
-		Secrets::set( $this->secret_key( $connector_id ), $value, $this->secret_context() );
+		$this->set_secret( $this->secret_key( $connector_id ), $value );
 		return '';
 	}
 
@@ -245,7 +250,7 @@ final class Secrets_Bridge {
 			return $value;
 		}
 
-		$secret = Secrets::get( $this->secret_key( $connector_id ), $this->secret_context() );
+		$secret = $this->get_secret( $this->secret_key( $connector_id ) );
 		if ( null === $secret ) {
 			return $value;
 		}
@@ -280,7 +285,7 @@ final class Secrets_Bridge {
 			return $default_value;
 		}
 
-		$secret = Secrets::get( $this->secret_key( $connector_id ), $this->secret_context() );
+		$secret = $this->get_secret( $this->secret_key( $connector_id ) );
 		if ( null === $secret || '' === $secret ) {
 			return $default_value;
 		}
@@ -289,14 +294,194 @@ final class Secrets_Bridge {
 	}
 
 	/**
-	 * Returns whether the bundled secrets backend can encrypt in this environment.
+	 * Returns whether a secrets backend can encrypt in this environment.
+	 *
+	 * Returns true if the global Secrets API is available, or if the bundled
+	 * encrypted-options provider can be activated.
 	 *
 	 * @since 1.1.0
+	 * @since 1.5.0 Supports the global Secrets API when present.
 	 *
 	 * @return bool Whether an encryption provider is available.
 	 */
 	public function is_secrets_manager_available(): bool {
+		if ( function_exists( 'wp_get_secret' ) || function_exists( 'wp_set_secret' ) ) {
+			return true;
+		}
+
+		return $this->is_legacy_provider_available();
+	}
+
+	/**
+	 * Returns whether the bundled legacy secrets backend can encrypt in this environment.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @return bool Whether the bundled encryption provider is available.
+	 */
+	public function is_legacy_provider_available(): bool {
 		return null !== $this->active_provider();
+	}
+
+	/**
+	 * Retrieves a secret value, preferring the global Secrets API when present,
+	 * falling back to the bundled provider.
+	 *
+	 * Transparently promotes any legacy prototype row to the new API on read.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param string $secret_key Namespaced secret key.
+	 * @return string|null Decrypted secret value, or null if not found.
+	 */
+	public function get_secret( string $secret_key ): ?string {
+		if ( function_exists( 'wp_get_secret' ) ) {
+			$value = wp_get_secret( $secret_key, $this->secret_context() );
+			if ( null !== $value && '' !== $value ) {
+				return is_string( $value ) ? $value : null;
+			}
+
+			// If absent in the new API, check if legacy store holds it:
+			if ( $this->is_legacy_provider_available() ) {
+				$legacy = Secrets::get( $secret_key, $this->secret_context() );
+				if ( null !== $legacy && '' !== $legacy ) {
+					// Transparent read-time promotion:
+					if ( function_exists( 'wp_set_secret' ) ) {
+						$stored = wp_set_secret( $secret_key, $legacy, $this->secret_context() );
+						if ( false !== $stored && ! is_wp_error( $stored ) ) {
+							delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
+						}
+					}
+					return $legacy;
+				}
+			}
+
+			return null;
+		}
+
+		if ( $this->is_legacy_provider_available() ) {
+			return Secrets::get( $secret_key, $this->secret_context() );
+		}
+
+		return null;
+	}
+
+	/**
+	 * Stores a secret value, preferring the global Secrets API when present,
+	 * falling back to the bundled provider.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param string $secret_key Namespaced secret key.
+	 * @param string $value      Plaintext secret value.
+	 * @return bool True on success, false on failure.
+	 */
+	public function set_secret( string $secret_key, string $value ): bool {
+		if ( function_exists( 'wp_set_secret' ) ) {
+			$result = wp_set_secret( $secret_key, $value, $this->secret_context() );
+			if ( false !== $result && ! is_wp_error( $result ) ) {
+				delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
+				return true;
+			}
+		}
+
+		if ( $this->is_legacy_provider_available() ) {
+			return Secrets::set( $secret_key, $value, $this->secret_context() );
+		}
+
+		return false;
+	}
+
+	/**
+	 * Deletes a secret from both the global Secrets API (if present) and the bundled provider.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param string $secret_key Namespaced secret key.
+	 * @return bool True if deleted or attempted.
+	 */
+	public function delete_secret( string $secret_key ): bool {
+		$deleted = false;
+
+		if ( function_exists( 'wp_delete_secret' ) ) {
+			$result = wp_delete_secret( $secret_key, $this->secret_context() );
+			if ( false !== $result && ! is_wp_error( $result ) ) {
+				$deleted = true;
+			}
+		}
+
+		if ( $this->is_legacy_provider_available() ) {
+			if ( Secrets::delete( $secret_key, $this->secret_context() ) ) {
+				$deleted = true;
+			}
+		}
+
+		delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
+
+		return $deleted;
+	}
+
+	/**
+	 * Migrates any legacy `_secret_ai/*` option rows to the active Secrets API.
+	 *
+	 * Idempotent: safely reads existing ciphertext via the internal provider, stores
+	 * it into the new Secrets API, verifies read-back, and deletes the old option row.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @return int Number of secrets migrated.
+	 */
+	public function maybe_migrate_legacy_secrets(): int {
+		if ( ! function_exists( 'wp_set_secret' ) || ! function_exists( 'wp_get_secret' ) ) {
+			return 0;
+		}
+
+		if ( ! $this->is_legacy_provider_available() ) {
+			return 0;
+		}
+
+		global $wpdb;
+
+		$like = $wpdb->esc_like( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . self::SECRET_NAMESPACE . '/' ) . '%';
+
+		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-time migration query.
+		$option_names = $wpdb->get_col(
+			$wpdb->prepare(
+				"SELECT option_name FROM {$wpdb->options} WHERE option_name LIKE %s",
+				$like
+			)
+		);
+
+		if ( empty( $option_names ) ) {
+			return 0;
+		}
+
+		$count         = 0;
+		$prefix_length = strlen( Secrets_Provider_Encrypted_Options::OPTION_PREFIX );
+
+		foreach ( $option_names as $option_name ) {
+			$secret_key = substr( $option_name, $prefix_length );
+
+			$plaintext = Secrets::get( $secret_key, $this->secret_context() );
+			if ( null === $plaintext || '' === $plaintext ) {
+				continue;
+			}
+
+			$stored = wp_set_secret( $secret_key, $plaintext, $this->secret_context() );
+			if ( false === $stored || is_wp_error( $stored ) ) {
+				continue;
+			}
+
+			// Verify the new secret was written and matches the plaintext before deleting the old row.
+			if ( wp_get_secret( $secret_key, $this->secret_context() ) !== $plaintext ) {
+				continue;
+			}
+
+			delete_option( $option_name );
+			++$count;
+		}
+
+		return $count;
 	}
 
 	/**
@@ -451,6 +636,6 @@ final class Secrets_Bridge {
 			return;
 		}
 
-		Secrets::delete( $this->secret_key( $connector_id ), $this->secret_context() );
+		$this->delete_secret( $this->secret_key( $connector_id ) );
 	}
 }

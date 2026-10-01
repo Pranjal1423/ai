@@ -1,8 +1,8 @@
 # Vendored: Displace Secrets Manager (SDK subset)
 
-This directory contains a **minimal, namespaced copy** of the secrets SDK from [ericmann/displace-secrets-manager](https://github.com/ericmann/displace-secrets-manager), bundled so the Key Encryption experiment works without requiring users to install a separate plugin.
+This directory contains a **minimal, namespaced copy** of the secrets SDK from [ericmann/displace-secrets-manager](https://github.com/ericmann/displace-secrets-manager), bundled as a zero-install fallback for the Key Encryption experiment when the official [Secrets API](https://github.com/ericmann/secrets-api) feature plugin (or WordPress 7.2 Core) is not present.
 
-- **Upstream:** [ericmann/displace-secrets-manager](https://github.com/ericmann/displace-secrets-manager)
+- **Upstream:** [ericmann/displace-secrets-manager](https://github.com/ericmann/displace-secrets-manager) (superseded by [ericmann/secrets-api](https://github.com/ericmann/secrets-api))
 - **Vendored commit:** `49c6aca6beabefc4ed726737d4a88e1baf6869cb`
 - **License:** GPL-2.0-or-later. Original copyright © Eric Mann.
 

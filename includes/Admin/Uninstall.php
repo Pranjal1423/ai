@@ -164,6 +164,14 @@ final class Uninstall {
 			}
 		}
 
+		if ( function_exists( 'wp_delete_secret' ) ) {
+			$context = array( 'plugin' => Secrets_Bridge::SECRET_NAMESPACE );
+			$bridge  = new Secrets_Bridge();
+			foreach ( $bridge->get_connector_setting_names() as $connector_id => $setting_name ) {
+				wp_delete_secret( Secrets_Bridge::SECRET_NAMESPACE . '/' . $connector_id . '_api_key', $context );
+			}
+		}
+
 		// Exact option names that don't share a plugin prefix: legacy pre-1.0
 		// options from the plugin's own AI Credentials screen, which was replaced
 		// by the Connectors approach.

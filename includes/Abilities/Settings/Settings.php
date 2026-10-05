@@ -98,9 +98,7 @@ final class Settings {
 
 			register_initial_settings();
 
-			// Plugin: restore $new_allowed_options so early registration doesn't pollute
-			// options.php's allowed options list (e.g. adding 'admin_email' which causes
-			// a validation failure on Settings › General form saves).
+			// Restore $new_allowed_options so early registration doesn't pollute options.php.
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound, WordPress.WP.GlobalVariablesOverride.Prohibited -- Restores the WordPress core global to its state before register_initial_settings().
 			$GLOBALS['new_allowed_options'] = $prev_new_allowed_options;
 			// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Re-links the legacy alias to the restored array.

@@ -144,12 +144,6 @@ class SettingsTest extends WP_UnitTestCase {
 	/**
 	 * Tests that registering initial settings for abilities does not pollute $new_allowed_options.
 	 *
-	 * When register_initial_settings() runs, it adds core settings (like 'admin_email') to
-	 * $new_allowed_options['general']. On admin form saves (wp-admin/options.php), this causes
-	 * options.php to expect an 'admin_email' POST field and fail with an invalid email error
-	 * because the General settings form submits 'new_admin_email'.
-	 *
-	 * @ticket 1048
 	 * @since x.x.x
 	 */
 	public function test_register_preserves_new_allowed_options(): void {

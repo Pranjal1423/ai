@@ -52,7 +52,14 @@ class V1_5_0Test extends WP_UnitTestCase {
 	 * @since 1.5.0
 	 */
 	public function test_run_skips_when_already_upgraded(): void {
-		$this->assertFalse( ( new V1_5_0( '1.5.0' ) )->run() );
+		$bridge = Key_Encryption::get_bridge();
+		$bridge->is_secrets_manager_available();
+		Secrets::set( self::SECRET_KEY, 'sk-legacy-value', array( 'plugin' => 'ai' ) );
+
+		$this->assertTrue( ( new V1_5_0( '1.5.0' ) )->run() );
+
+		// Legacy secret should remain untouched because upgrade was skipped.
+		$this->assertNotFalse( get_option( self::LEGACY_ROW ) );
 	}
 
 	/**

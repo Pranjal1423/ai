@@ -101,8 +101,6 @@ final class Settings {
 			// Restore $new_allowed_options so early registration doesn't pollute options.php.
 			// phpcs:ignore WordPress.NamingConventions.PrefixAllGlobals.NonPrefixedVariableFound, WordPress.WP.GlobalVariablesOverride.Prohibited -- Restores the WordPress core global to its state before register_initial_settings().
 			$GLOBALS['new_allowed_options'] = $prev_new_allowed_options;
-			// phpcs:ignore WordPress.WP.GlobalVariablesOverride.Prohibited -- Re-links the legacy alias to the restored array.
-			$GLOBALS['new_whitelist_options'] = &$GLOBALS['new_allowed_options'];
 		}
 
 		$this->register_get_settings();

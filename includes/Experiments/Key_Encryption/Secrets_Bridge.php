@@ -325,6 +325,7 @@ final class Secrets_Bridge {
 	 */
 	public function is_secrets_manager_available(): bool {
 		$this->ensure_secrets_api();
+		$this->is_legacy_provider_available();
 
 		if ( function_exists( 'wp_get_secret' ) || function_exists( 'wp_set_secret' ) ) {
 			return true;

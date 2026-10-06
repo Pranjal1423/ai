@@ -33,6 +33,10 @@ class V1_5_0Test extends WP_UnitTestCase {
 	 */
 	public function tearDown(): void {
 		delete_option( self::LEGACY_ROW );
+		delete_option( '_wp_secret_' . self::SECRET_KEY );
+		if ( function_exists( 'wp_delete_secret' ) ) {
+			wp_delete_secret( self::SECRET_KEY );
+		}
 		Secrets_Manager::reset();
 		parent::tearDown();
 	}
@@ -53,6 +57,7 @@ class V1_5_0Test extends WP_UnitTestCase {
 	 */
 	public function test_run_skips_when_already_upgraded(): void {
 		$bridge = Key_Encryption::get_bridge();
+		$bridge->is_legacy_provider_available();
 		$bridge->is_secrets_manager_available();
 		Secrets::set( self::SECRET_KEY, 'sk-legacy-value', array( 'plugin' => 'ai' ) );
 
@@ -71,6 +76,7 @@ class V1_5_0Test extends WP_UnitTestCase {
 		$bridge = Key_Encryption::get_bridge();
 
 		// Populate a legacy secret directly via internal provider.
+		$bridge->is_legacy_provider_available();
 		$bridge->is_secrets_manager_available();
 		Secrets::set( self::SECRET_KEY, 'sk-legacy-value', array( 'plugin' => 'ai' ) );
 

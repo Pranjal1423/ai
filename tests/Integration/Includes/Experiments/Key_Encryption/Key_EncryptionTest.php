@@ -314,6 +314,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		$bridge = Key_Encryption::get_bridge();
 
 		// Setting a legacy secret.
+		$bridge->is_legacy_provider_available();
 		$bridge->is_secrets_manager_available();
 		$this->assertTrue( Secrets::set( self::SECRET_KEY, 'sk-legacy-to-migrate', self::SECRET_CONTEXT ) );
 		$this->assertSame( 'sk-legacy-to-migrate', $bridge->get_secret( self::SECRET_KEY ) );

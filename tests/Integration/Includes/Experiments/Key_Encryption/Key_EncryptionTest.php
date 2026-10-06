@@ -95,7 +95,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		$this->assertSame( 'sk-secret-value', $this->secret_value() );
 
 		// The stored secret must be ciphertext at rest, never the plaintext key.
-		$stored = get_option( '_secret_' . self::SECRET_KEY );
+		$stored = get_option( '_wp_secret_' . self::SECRET_KEY ) ?: get_option( '_secret_' . self::SECRET_KEY );
 		$this->assertNotFalse( $stored );
 		$this->assertNotSame( 'sk-secret-value', $stored );
 	}
@@ -332,7 +332,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	 * @since 1.1.0
 	 */
 	private function secret_value(): ?string {
-		return Secrets::get( self::SECRET_KEY, self::SECRET_CONTEXT );
+		return Key_Encryption::get_bridge()->get_secret( self::SECRET_KEY );
 	}
 
 	/**
@@ -341,7 +341,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	 * @since 1.1.0
 	 */
 	private function secret_stored(): bool {
-		return Secrets::exists( self::SECRET_KEY, self::SECRET_CONTEXT );
+		return null !== Key_Encryption::get_bridge()->get_secret( self::SECRET_KEY );
 	}
 
 	/**

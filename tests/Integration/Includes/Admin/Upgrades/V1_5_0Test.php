@@ -80,13 +80,10 @@ class V1_5_0Test extends WP_UnitTestCase {
 		$result = ( new V1_5_0( '1.4.0' ) )->run();
 		$this->assertTrue( $result );
 
-		// If global functions exist in environment, verify migration; otherwise verify it remained safe.
-		if ( function_exists( 'wp_get_secret' ) ) {
-			$this->assertSame( 'sk-legacy-value', wp_get_secret( self::SECRET_KEY, array( 'plugin' => 'ai' ) ) );
-			$this->assertFalse( get_option( self::LEGACY_ROW, false ) );
-		} else {
-			// Without the feature plugin, legacy store retains the key safely.
-			$this->assertSame( 'sk-legacy-value', $bridge->get_secret( self::SECRET_KEY ) );
-		}
+		// Verify migration to the bundled Secrets API.
+		$secret = wp_get_secret( self::SECRET_KEY );
+		$revealed = $secret instanceof \WP_Secret ? $secret->reveal() : $secret;
+		$this->assertSame( 'sk-legacy-value', $revealed );
+		$this->assertFalse( get_option( self::LEGACY_ROW, false ) );
 	}
 }

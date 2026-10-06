@@ -156,6 +156,7 @@ final class Uninstall {
 			'wpai_',
 			'ai_experiment_',
 			self::secrets_option_prefix(),
+			'_wp_secret_' . Secrets_Bridge::SECRET_NAMESPACE . '/',
 		);
 
 		foreach ( $prefixes as $prefix ) {
@@ -165,10 +166,9 @@ final class Uninstall {
 		}
 
 		if ( function_exists( 'wp_delete_secret' ) ) {
-			$context = array( 'plugin' => Secrets_Bridge::SECRET_NAMESPACE );
-			$bridge  = new Secrets_Bridge();
+			$bridge = new Secrets_Bridge();
 			foreach ( $bridge->get_connector_setting_names() as $connector_id => $setting_name ) {
-				wp_delete_secret( Secrets_Bridge::SECRET_NAMESPACE . '/' . $connector_id . '_api_key', $context );
+				wp_delete_secret( Secrets_Bridge::SECRET_NAMESPACE . '/' . $connector_id . '_api_key' );
 			}
 		}
 

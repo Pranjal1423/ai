@@ -294,6 +294,25 @@ final class Secrets_Bridge {
 	}
 
 	/**
+	 * Ensures the Secrets API is loaded (via Core, standalone feature plugin, or bundled vendor).
+	 *
+	 * @since 1.5.0
+	 */
+	public function ensure_secrets_api(): void {
+		if ( function_exists( 'wp_get_secret' ) ) {
+			return;
+		}
+
+		$load_path = dirname( __DIR__, 2 ) . '/Vendor/Secrets/load.php';
+		if ( ! file_exists( $load_path ) ) {
+			return;
+		}
+
+		// phpcs:ignore WordPressVIPMinimum.Files.IncludingFile.UsingVariable
+		require_once $load_path;
+	}
+
+	/**
 	 * Returns whether a secrets backend can encrypt in this environment.
 	 *
 	 * Returns true if the global Secrets API is available, or if the bundled
@@ -305,6 +324,8 @@ final class Secrets_Bridge {
 	 * @return bool Whether an encryption provider is available.
 	 */
 	public function is_secrets_manager_available(): bool {
+		$this->ensure_secrets_api();
+
 		if ( function_exists( 'wp_get_secret' ) || function_exists( 'wp_set_secret' ) ) {
 			return true;
 		}
@@ -335,10 +356,15 @@ final class Secrets_Bridge {
 	 * @return string|null Decrypted secret value, or null if not found.
 	 */
 	public function get_secret( string $secret_key ): ?string {
+		$this->ensure_secrets_api();
+
 		if ( function_exists( 'wp_get_secret' ) ) {
-			$value = wp_get_secret( $secret_key, $this->secret_context() );
-			if ( null !== $value && '' !== $value ) {
-				return is_string( $value ) ? $value : null;
+			$secret = wp_get_secret( $secret_key );
+			if ( is_object( $secret ) && method_exists( $secret, 'reveal' ) ) {
+				return $secret->reveal();
+			}
+			if ( is_string( $secret ) && '' !== $secret ) {
+				return $secret;
 			}
 
 			// If absent in the new API, check if legacy store holds it:
@@ -347,7 +373,7 @@ final class Secrets_Bridge {
 				if ( null !== $legacy && '' !== $legacy ) {
 					// Transparent read-time promotion:
 					if ( function_exists( 'wp_set_secret' ) ) {
-						$stored = wp_set_secret( $secret_key, $legacy, $this->secret_context() );
+						$stored = wp_set_secret( $secret_key, $legacy );
 						if ( false !== $stored && ! is_wp_error( $stored ) ) {
 							delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
 						}
@@ -377,8 +403,10 @@ final class Secrets_Bridge {
 	 * @return bool True on success, false on failure.
 	 */
 	public function set_secret( string $secret_key, string $value ): bool {
+		$this->ensure_secrets_api();
+
 		if ( function_exists( 'wp_set_secret' ) ) {
-			$result = wp_set_secret( $secret_key, $value, $this->secret_context() );
+			$result = wp_set_secret( $secret_key, $value );
 			if ( false !== $result && ! is_wp_error( $result ) ) {
 				delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
 				return true;
@@ -401,10 +429,12 @@ final class Secrets_Bridge {
 	 * @return bool True if deleted or attempted.
 	 */
 	public function delete_secret( string $secret_key ): bool {
+		$this->ensure_secrets_api();
+
 		$deleted = false;
 
 		if ( function_exists( 'wp_delete_secret' ) ) {
-			$result = wp_delete_secret( $secret_key, $this->secret_context() );
+			$result = wp_delete_secret( $secret_key );
 			if ( false !== $result && ! is_wp_error( $result ) ) {
 				$deleted = true;
 			}
@@ -432,6 +462,8 @@ final class Secrets_Bridge {
 	 * @return int Number of secrets migrated.
 	 */
 	public function maybe_migrate_legacy_secrets(): int {
+		$this->ensure_secrets_api();
+
 		if ( ! function_exists( 'wp_set_secret' ) || ! function_exists( 'wp_get_secret' ) ) {
 			return 0;
 		}
@@ -467,13 +499,15 @@ final class Secrets_Bridge {
 				continue;
 			}
 
-			$stored = wp_set_secret( $secret_key, $plaintext, $this->secret_context() );
+			$stored = wp_set_secret( $secret_key, $plaintext );
 			if ( false === $stored || is_wp_error( $stored ) ) {
 				continue;
 			}
 
 			// Verify the new secret was written and matches the plaintext before deleting the old row.
-			if ( wp_get_secret( $secret_key, $this->secret_context() ) !== $plaintext ) {
+			$secret   = wp_get_secret( $secret_key );
+			$readback = is_object( $secret ) && method_exists( $secret, 'reveal' ) ? $secret->reveal() : $secret;
+			if ( $readback !== $plaintext ) {
 				continue;
 			}
 

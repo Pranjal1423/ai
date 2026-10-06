@@ -35,11 +35,11 @@ Every call into the bundled SDK passes a caller-asserted context (`[ 'plugin' =>
 
 ## Secrets backend & Secrets API integration
 
-The Key Encryption experiment automatically integrates with the [WordPress Secrets API](https://github.com/ericmann/secrets-api) (the feature plugin proposed for WordPress 7.2 Core) when present:
+The Key Encryption experiment is built on the [WordPress Secrets API](https://github.com/ericmann/secrets-api) (the feature plugin proposed for WordPress 7.2 Core):
 
-- **When the Secrets API is active:** Transparently delegates to the global `wp_get_secret()`, `wp_set_secret()`, and `wp_delete_secret()` functions under the `ai/` namespace.
-- **Zero-install fallback:** If the Secrets API is not installed, the experiment falls back to a bundled, namespaced copy of the encrypted-options provider at `includes/Vendor/Secrets/` under `WordPress\AI\Vendor\Secrets`. No separate plugin is required for zero-config encryption.
-- **Automated migration:** Existing prototype secrets stored in `_secret_ai/*` are automatically migrated to the new Secrets API upon upgrade (or during read-time promotion), ensuring zero lost keys when adopting the new feature plugin or upgrading to WordPress 7.2.
+- **Bundled feature plugin:** The experiment bundles the Secrets API runtime in `includes/Vendor/Secrets/`, providing `wp_get_secret()`, `wp_set_secret()`, and `wp_delete_secret()` out of the box with zero external dependencies.
+- **Native core & standalone compatibility:** If WordPress Core (7.2+) or a standalone Secrets API plugin is already present, the bundled loader gracefully stands down and Key Encryption delegates directly to the environment's implementation.
+- **Automated migration:** Existing prototype secrets stored in `_secret_ai/*` are automatically migrated to the new Secrets API upon upgrade (or during read-time promotion), ensuring zero lost keys.
 
 Secrets are stored under the `ai/` namespace (e.g. `ai/openai_api_key`) with an explicit `['plugin' => 'ai']` context.
 

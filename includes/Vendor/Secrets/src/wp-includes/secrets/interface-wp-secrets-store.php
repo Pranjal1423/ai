@@ -7,6 +7,10 @@
  * @since 7.2.0
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Where a secret's encrypted record lives.
  *

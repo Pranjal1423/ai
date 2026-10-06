@@ -7,6 +7,10 @@
  * @since 7.2.0
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Manages the root key and derives per-scope master keys from it.
  *

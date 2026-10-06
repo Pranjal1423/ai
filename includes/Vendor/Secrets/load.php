@@ -13,6 +13,10 @@ declare( strict_types=1 );
 
 namespace WordPress\AI\Vendor\Secrets;
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 if ( function_exists( 'wp_get_secret' ) ) {
 	return;
 }

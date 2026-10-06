@@ -5,6 +5,10 @@
  * @package SecretsAPI
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Read-only access to the earlier prototype's on-disk format.
  *

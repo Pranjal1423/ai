@@ -7,6 +7,10 @@
  * @since 7.2.0
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Stands in for the keyring when a drop-in leaves an invalid value behind.
  *

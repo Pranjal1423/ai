@@ -5,6 +5,10 @@
  * @package SecretsAPI
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Copies secrets out of the prototype's on-disk format into the new one.
  *

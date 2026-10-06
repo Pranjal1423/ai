@@ -7,6 +7,10 @@
  * @since 7.2.0
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Identifies which slot of a secret's two-slot history to operate on.
  *

@@ -337,6 +337,105 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests Secrets_Bridge handles absent secrets properly.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_get_secret_returns_null_when_absent(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$this->assertNull( $bridge->get_secret( 'ai/non_existent_key_12345' ) );
+	}
+
+	/**
+	 * Tests Secrets_Bridge transparent read-time promotion from legacy option to Secrets API.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_transparent_read_promotion(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$legacy_key = 'ai/transparent_promo_key';
+		$legacy_row = '_secret_' . $legacy_key;
+
+		$bridge->is_legacy_provider_available();
+		$bridge->is_secrets_manager_available();
+		$this->assertTrue( Secrets::set( $legacy_key, 'sk-transparent-val', self::SECRET_CONTEXT ) );
+		$this->assertNotFalse( get_option( $legacy_row ) );
+
+		// Read via bridge: must transparently promote and clean up legacy row.
+		$this->assertSame( 'sk-transparent-val', $bridge->get_secret( $legacy_key ) );
+		$this->assertFalse( get_option( $legacy_row, false ) );
+
+		// Subsequent reads come from the new Secrets API.
+		$secret = wp_get_secret( $legacy_key );
+		$revealed = $secret instanceof \WP_Secret ? $secret->reveal() : $secret;
+		$this->assertSame( 'sk-transparent-val', $revealed );
+
+		$bridge->delete_secret( $legacy_key );
+	}
+
+	/**
+	 * Tests Secrets_Bridge set_secret clears any existing legacy option.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_set_secret_cleans_legacy_row(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$key = 'ai/overwrite_legacy_key';
+		$legacy_row = '_secret_' . $key;
+
+		$bridge->is_legacy_provider_available();
+		Secrets::set( $key, 'sk-old-val', self::SECRET_CONTEXT );
+		$this->assertNotFalse( get_option( $legacy_row ) );
+
+		// Write new value via set_secret:
+		$this->assertTrue( $bridge->set_secret( $key, 'sk-new-val' ) );
+		$this->assertFalse( get_option( $legacy_row, false ) );
+		$this->assertSame( 'sk-new-val', $bridge->get_secret( $key ) );
+
+		$bridge->delete_secret( $key );
+	}
+
+	/**
+	 * Tests Secrets_Bridge delete_secret removes both new and legacy rows.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_delete_secret_cleans_all(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$key = 'ai/delete_all_key';
+		$legacy_row = '_secret_' . $key;
+
+		$bridge->is_legacy_provider_available();
+		Secrets::set( $key, 'sk-val', self::SECRET_CONTEXT );
+		$bridge->set_secret( $key, 'sk-val' );
+
+		$this->assertTrue( $bridge->delete_secret( $key ) );
+		$this->assertNull( $bridge->get_secret( $key ) );
+		$this->assertFalse( get_option( $legacy_row, false ) );
+	}
+
+	/**
+	 * Tests maybe_migrate_legacy_secrets returns 0 when no legacy rows exist.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_maybe_migrate_legacy_secrets_empty(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$this->assertSame( 0, $bridge->maybe_migrate_legacy_secrets() );
+	}
+
+	/**
+	 * Tests Key_Encryption preloaded options and register method.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_experiment_preloaded_options_and_register(): void {
+		$this->assertSame( array( Key_Encryption::RESUME_MIGRATION_OPTION ), $this->experiment->get_preloaded_options() );
+		$this->experiment->register();
+		$this->assertTrue( Key_Encryption::get_bridge()->is_secrets_manager_available() );
+	}
+
+	/**
 	 * Returns the decrypted secret value for the test connector, or null if none is stored.
 	 *
 	 * @since 1.1.0

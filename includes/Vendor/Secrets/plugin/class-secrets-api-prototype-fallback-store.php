@@ -5,6 +5,10 @@
  * @package SecretsAPI
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * Serves a read whose new-format record does not exist yet from the prototype's
  * option row instead, upgrading it to the current format on the way through.

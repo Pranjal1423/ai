@@ -51,6 +51,15 @@ class V1_5_0Test extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests that upgrade() skips when db_version is empty (new install).
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_upgrade_skips_when_db_version_is_empty(): void {
+		$this->assertTrue( ( new V1_5_0( '' ) )->run() );
+	}
+
+	/**
 	 * Tests that run() skips upgrade when the db version is already current.
 	 *
 	 * @since 1.5.0

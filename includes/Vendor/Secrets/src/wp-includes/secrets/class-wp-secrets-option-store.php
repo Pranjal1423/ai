@@ -7,6 +7,10 @@
  * @since 7.2.0
  */
 
+if ( ! defined( 'ABSPATH' ) ) {
+	exit;
+}
+
 /**
  * The default secret store.
  *

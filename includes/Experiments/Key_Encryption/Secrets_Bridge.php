@@ -365,7 +365,12 @@ final class Secrets_Bridge {
 
 		// If absent in the new API (or Secrets API unavailable), check if legacy store holds it:
 		if ( $this->is_legacy_provider_available() ) {
-			$legacy = Secrets::get( $secret_key, $this->secret_context() );
+			try {
+				$legacy = Secrets::get( $secret_key, $this->secret_context() );
+			} catch ( \Throwable $e ) {
+				$legacy = null;
+			}
+
 			if ( null !== $legacy && '' !== $legacy ) {
 				// Transparent read-time promotion if new API is present:
 				if ( function_exists( 'wp_set_secret' ) ) {
@@ -483,7 +488,12 @@ final class Secrets_Bridge {
 		foreach ( $option_names as $option_name ) {
 			$secret_key = substr( $option_name, $prefix_length );
 
-			$plaintext = Secrets::get( $secret_key, $this->secret_context() );
+			try {
+				$plaintext = Secrets::get( $secret_key, $this->secret_context() );
+			} catch ( \Throwable $e ) {
+				continue;
+			}
+
 			if ( null === $plaintext || '' === $plaintext ) {
 				continue;
 			}

@@ -60,11 +60,6 @@ final class Secrets_Bridge {
 	 * @since 1.1.0
 	 */
 	public function register_option_filters(): void {
-		// Transparently migrate any legacy prototype secrets if the new Secrets API is present.
-		if ( function_exists( 'wp_set_secret' ) && function_exists( 'wp_get_secret' ) ) {
-			$this->maybe_migrate_legacy_secrets();
-		}
-
 		foreach ( $this->get_connector_setting_names() as $setting_name ) {
 			$write_hook   = "pre_update_option_{$setting_name}";
 			$read_hook    = "option_{$setting_name}";
@@ -325,7 +320,6 @@ final class Secrets_Bridge {
 	 */
 	public function is_secrets_manager_available(): bool {
 		$this->ensure_secrets_api();
-		$this->is_legacy_provider_available();
 
 		if ( function_exists( 'wp_get_secret' ) || function_exists( 'wp_set_secret' ) ) {
 			return true;
@@ -367,27 +361,21 @@ final class Secrets_Bridge {
 			if ( is_string( $secret ) && '' !== $secret ) {
 				return $secret;
 			}
-
-			// If absent in the new API, check if legacy store holds it:
-			if ( $this->is_legacy_provider_available() ) {
-				$legacy = Secrets::get( $secret_key, $this->secret_context() );
-				if ( null !== $legacy && '' !== $legacy ) {
-					// Transparent read-time promotion:
-					if ( function_exists( 'wp_set_secret' ) ) {
-						$stored = wp_set_secret( $secret_key, $legacy );
-						if ( false !== $stored && ! is_wp_error( $stored ) ) {
-							delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
-						}
-					}
-					return $legacy;
-				}
-			}
-
-			return null;
 		}
 
+		// If absent in the new API (or Secrets API unavailable), check if legacy store holds it:
 		if ( $this->is_legacy_provider_available() ) {
-			return Secrets::get( $secret_key, $this->secret_context() );
+			$legacy = Secrets::get( $secret_key, $this->secret_context() );
+			if ( null !== $legacy && '' !== $legacy ) {
+				// Transparent read-time promotion if new API is present:
+				if ( function_exists( 'wp_set_secret' ) ) {
+					$stored = wp_set_secret( $secret_key, $legacy );
+					if ( false !== $stored && ! is_wp_error( $stored ) ) {
+						delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
+					}
+				}
+				return $legacy;
+			}
 		}
 
 		return null;

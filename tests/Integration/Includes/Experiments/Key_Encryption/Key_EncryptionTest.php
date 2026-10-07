@@ -436,6 +436,53 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests deleting a secret that only exists in the legacy option store.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_delete_secret_legacy_only(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$key = 'ai/legacy_only_delete_key';
+		$legacy_row = '_secret_' . $key;
+
+		$bridge->is_legacy_provider_available();
+		Secrets::set( $key, 'sk-legacy-only', self::SECRET_CONTEXT );
+		$this->assertNotFalse( get_option( $legacy_row ) );
+
+		$this->assertTrue( $bridge->delete_secret( $key ) );
+		$this->assertFalse( get_option( $legacy_row, false ) );
+		$this->assertNull( $bridge->get_secret( $key ) );
+	}
+
+	/**
+	 * Tests maybe_migrate_legacy_secrets skips empty or malformed legacy rows.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_maybe_migrate_legacy_secrets_skips_empty(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$empty_key = '_secret_ai/empty_legacy_key';
+		update_option( $empty_key, '' );
+
+		$migrated = $bridge->maybe_migrate_legacy_secrets();
+		$this->assertSame( 0, $migrated );
+
+		delete_option( $empty_key );
+	}
+
+	/**
+	 * Tests ensure_secrets_api is safely callable multiple times.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_ensure_secrets_api_idempotent(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$bridge->ensure_secrets_api();
+		$bridge->ensure_secrets_api();
+		$this->assertTrue( function_exists( 'wp_get_secret' ) );
+	}
+
+	/**
 	 * Returns the decrypted secret value for the test connector, or null if none is stored.
 	 *
 	 * @since 1.1.0

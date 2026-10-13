@@ -314,7 +314,14 @@ class Markdown_Feeds extends Abstract_Feature {
 		}
 
 		printf(
-			'<link rel="alternate" type="text/markdown" href="%s" />' . "\n",
+			'<link rel="alternate" type="text/markdown" title="%s" href="%s" />' . "\n",
+			esc_attr(
+				sprintf(
+					/* translators: %s: post title. */
+					__( '%s (Markdown)', 'ai' ),
+					wp_strip_all_tags( (string) get_the_title( $post ) )
+				)
+			),
 			esc_url( add_query_arg( 'output_format', 'markdown', $permalink ) )
 		);
 	}

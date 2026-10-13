@@ -20,7 +20,7 @@ class Markdown_FeedsTest extends WP_UnitTestCase {
 	/**
 	 * Experiment under test.
 	 *
-	 * @var Markdown_Feeds
+	 * @var \WordPress\AI\Experiments\Markdown_Feeds\Markdown_Feeds
 	 */
 	private $experiment;
 
@@ -382,6 +382,10 @@ class Markdown_FeedsTest extends WP_UnitTestCase {
 		$this->assertStringContainsString( 'type="text/markdown"', $output );
 		$this->assertStringContainsString( 'output_format=markdown', $output );
 		$this->assertStringContainsString( esc_url( get_feed_link( Markdown_Feeds::FEED_NAME ) ), $output );
+		$this->assertStringContainsString(
+			sprintf( 'title="%s (Markdown)"', esc_attr( wp_strip_all_tags( (string) get_the_title( $post_id ) ) ) ),
+			$output
+		);
 	}
 
 	/**

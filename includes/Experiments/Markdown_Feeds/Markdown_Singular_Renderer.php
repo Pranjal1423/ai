@@ -68,12 +68,16 @@ class Markdown_Singular_Renderer {
 				__( 'Published: %s', 'ai' ),
 				(string) get_the_date( 'c', $post )
 			),
-			'- ' . sprintf(
+		);
+
+		$author_name = (string) get_the_author_meta( 'display_name', (int) $post->post_author );
+		if ( '' !== trim( $author_name ) ) {
+			$meta_lines[] = '- ' . sprintf(
 				/* translators: %s: post author display name. */
 				__( 'Author: %s', 'ai' ),
-				(string) get_the_author_meta( 'display_name', (int) $post->post_author )
-			),
-		);
+				$author_name
+			);
+		}
 
 		$sections = array(
 			'title'    => '# ' . $title,

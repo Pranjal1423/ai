@@ -14,6 +14,8 @@
 
 The AI plugin provides a set of opt-in AI features for authors, editors, and admins directly within WordPress. It serves as a reference implementation for developers, agencies, and hosts looking to build or extend AI-powered workflows using building blocks from the WordPress AI team (as [*part of the **AI Building Blocks for WordPress** initiative*](https://make.wordpress.org/ai/2025/07/17/ai-building-blocks)).
 
+New to WordPress AI? Take the [AI-Powered WordPress course](https://learn.wordpress.org/course/ai-powered-wordpress/) to learn how to configure the plugin, use its features, and understand the building blocks behind them.
+
 > [!NOTE]
 > This plugin is experimental.  Features may change, move, or break.  Use on Production sites at your own risk.  It is recommended to test in a non-Production environment and follow the plugin’s development closely if adopting early.
 
@@ -48,6 +50,7 @@ While the Classic Editor plugin remains widely used, the AI plugin is focused on
 * **[Abilities Explorer](docs/experiments/abilities-explorer.md)** – Discover, inspect, test, and document all abilities registered via the WordPress Abilities API.
 * **[AI Request Logging](docs/experiments/ai-request-logging.md)** – Logs AI requests for observability and debugging.
 * **[Alt Text Generation](docs/experiments/alt-text-generation.md)** - Generates descriptive alt text for images using AI vision models.
+* **[Content Verification](docs/experiments/c2pa-monitor.md)** – Detects [C2PA Content Credentials](https://c2pa.org/) in uploaded images and stores the raw manifest plus a structured record alongside the attachment.
 * **[Comment Moderation](docs/experiments/comment-moderation.md)** - Automatically moderate comments based on toxicity detection and sentiment analysis, and give each comment a value score.
 * **[Connector Approvals](docs/experiments/connector-approval.md)** - Require explicit administrator approval before plugins or themes can use AI connectors configured on this site.
 * **[Content Classification](docs/experiments/content-classification.md)** – Suggests relevant tags and categories to organize content.

@@ -319,7 +319,12 @@ class Markdown_Feeds extends Abstract_Feature {
 				sprintf(
 					/* translators: %s: post title. */
 					__( '%s (Markdown)', 'ai' ),
-					wp_strip_all_tags( (string) get_the_title( $post ) )
+					the_title_attribute(
+						array(
+							'echo' => false,
+							'post' => $post,
+						)
+					)
 				)
 			),
 			esc_url( add_query_arg( 'output_format', 'markdown', $permalink ) )

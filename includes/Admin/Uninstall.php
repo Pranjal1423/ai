@@ -168,10 +168,14 @@ final class Uninstall {
 			}
 		}
 
-		if ( function_exists( 'wp_delete_secret' ) ) {
-			$bridge = new Secrets_Bridge();
-			foreach ( $bridge->get_connector_setting_names() as $connector_id => $setting_name ) {
-				wp_delete_secret( Secrets_Bridge::SECRET_NAMESPACE . '/' . $connector_id . '_api_key' );
+		// List through the Secrets API so secrets kept by a `secrets.php` drop-in are
+		// deleted too, including those of connectors that are no longer registered.
+		if ( function_exists( 'wp_list_secrets' ) && function_exists( 'wp_delete_secret' ) ) {
+			$secrets = wp_list_secrets( Secrets_Bridge::SECRET_NAMESPACE );
+			if ( is_array( $secrets ) ) {
+				foreach ( $secrets as $secret ) {
+					wp_delete_secret( $secret['name'] );
+				}
 			}
 		}
 

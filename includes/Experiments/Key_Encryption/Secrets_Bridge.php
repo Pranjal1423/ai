@@ -55,6 +55,14 @@ final class Secrets_Bridge {
 	private bool $bypass_read_filter = false;
 
 	/**
+	 * Secrets found stored but unreadable during this request, keyed by secret key.
+	 *
+	 * @since 1.5.0
+	 * @var array<string, \WP_Error>
+	 */
+	private array $unreadable = array();
+
+	/**
 	 * Registers transparent read/write filters for every connector API key option.
 	 *
 	 * @since 1.1.0
@@ -353,12 +361,17 @@ final class Secrets_Bridge {
 	public function get_secret( string $secret_key ): ?string {
 		$this->ensure_secrets_api();
 
+		$unreadable = null;
+
 		if ( function_exists( 'wp_get_secret' ) ) {
 			$secret = wp_get_secret( $secret_key );
-			if ( is_object( $secret ) && method_exists( $secret, 'reveal' ) ) {
+			if ( is_wp_error( $secret ) ) {
+				// Stored, but not readable: the site key or salts changed, or a drop-in is broken.
+				$unreadable = $secret;
+			} elseif ( is_object( $secret ) && method_exists( $secret, 'reveal' ) ) {
+				unset( $this->unreadable[ $secret_key ] );
 				return $secret->reveal();
-			}
-			if ( is_string( $secret ) && '' !== $secret ) {
+			} elseif ( is_string( $secret ) && '' !== $secret ) {
 				return $secret;
 			}
 		}
@@ -372,15 +385,17 @@ final class Secrets_Bridge {
 			}
 
 			if ( null !== $legacy && '' !== $legacy ) {
-				// Transparent read-time promotion if new API is present:
-				if ( function_exists( 'wp_set_secret' ) ) {
-					$stored = wp_set_secret( $secret_key, $legacy );
-					if ( false !== $stored && ! is_wp_error( $stored ) ) {
-						delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
-					}
+				// Promote on read, but never over an unreadable secret, and delete the
+				// legacy row only once the new copy reads back intact.
+				if ( null === $unreadable && $this->write_and_verify( $secret_key, $legacy ) ) {
+					delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
 				}
 				return $legacy;
 			}
+		}
+
+		if ( null !== $unreadable ) {
+			$this->record_unreadable( $secret_key, $unreadable );
 		}
 
 		return null;
@@ -399,12 +414,9 @@ final class Secrets_Bridge {
 	public function set_secret( string $secret_key, string $value ): bool {
 		$this->ensure_secrets_api();
 
-		if ( function_exists( 'wp_set_secret' ) ) {
-			$result = wp_set_secret( $secret_key, $value );
-			if ( false !== $result && ! is_wp_error( $result ) ) {
-				delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
-				return true;
-			}
+		if ( $this->write_and_verify( $secret_key, $value ) ) {
+			delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
+			return true;
 		}
 
 		if ( $this->is_legacy_provider_available() ) {
@@ -498,15 +510,8 @@ final class Secrets_Bridge {
 				continue;
 			}
 
-			$stored = wp_set_secret( $secret_key, $plaintext );
-			if ( false === $stored || is_wp_error( $stored ) ) {
-				continue;
-			}
-
-			// Verify the new secret was written and matches the plaintext before deleting the old row.
-			$secret   = wp_get_secret( $secret_key );
-			$readback = is_object( $secret ) && method_exists( $secret, 'reveal' ) ? $secret->reveal() : $secret;
-			if ( $readback !== $plaintext ) {
+			// Delete the old row only once the new secret reads back intact.
+			if ( ! $this->write_and_verify( $secret_key, $plaintext ) ) {
 				continue;
 			}
 
@@ -515,6 +520,71 @@ final class Secrets_Bridge {
 		}
 
 		return $count;
+	}
+
+	/**
+	 * Returns the secret keys found stored but unreadable during this request.
+	 *
+	 * Lets callers such as the Key Encryption opt-out report a key that could not be
+	 * restored instead of treating it as never set.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @return array<string, \WP_Error> Map of secret key to the error the Secrets API returned.
+	 */
+	public function get_unreadable_secrets(): array {
+		return $this->unreadable;
+	}
+
+	/**
+	 * Records an unreadable secret and warns once per request.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param string    $secret_key Namespaced secret key.
+	 * @param \WP_Error $error      The error the Secrets API returned.
+	 */
+	private function record_unreadable( string $secret_key, \WP_Error $error ): void {
+		if ( isset( $this->unreadable[ $secret_key ] ) ) {
+			return;
+		}
+
+		$this->unreadable[ $secret_key ] = $error;
+
+		wp_trigger_error(
+			__METHOD__,
+			sprintf(
+				/* translators: 1: Secret name, 2: Error code. */
+				__( 'The secret "%1$s" is stored but could not be read (%2$s). Restore the site key or salts it was stored with, or save the key again.', 'ai' ),
+				$secret_key,
+				$error->get_error_code()
+			),
+			E_USER_WARNING
+		);
+	}
+
+	/**
+	 * Writes a secret through the Secrets API and confirms it reads back unchanged.
+	 *
+	 * @since 1.5.0
+	 *
+	 * @param string $secret_key Namespaced secret key.
+	 * @param string $value      Plaintext secret value.
+	 * @return bool True when the stored secret reads back as `$value`.
+	 */
+	private function write_and_verify( string $secret_key, string $value ): bool {
+		if ( ! function_exists( 'wp_set_secret' ) || ! function_exists( 'wp_get_secret' ) ) {
+			return false;
+		}
+
+		$stored = wp_set_secret( $secret_key, $value );
+		if ( false === $stored || is_wp_error( $stored ) ) {
+			return false;
+		}
+
+		$secret = wp_get_secret( $secret_key );
+
+		return is_object( $secret ) && method_exists( $secret, 'reveal' ) && hash_equals( $value, (string) $secret->reveal() );
 	}
 
 	/**

@@ -483,6 +483,91 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests that a secret core stores but cannot read is reported, not treated as never set.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_reports_an_unreadable_secret(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$this->assertTrue( $bridge->set_secret( self::SECRET_KEY, 'sk-unreadable' ) );
+
+		// A record the provider cannot open, as after a salt or site-key change.
+		$corrupt = static function () {
+			return 'not-a-secret-record';
+		};
+
+		$warnings = array();
+		$capture  = static function ( $function_name, $message ) use ( &$warnings ) {
+			$warnings[] = $message;
+		};
+
+		add_filter( 'option__wp_secret_' . self::SECRET_KEY, $corrupt );
+		add_action( 'wp_trigger_error_always_run', $capture, 10, 2 );
+		add_filter( 'wp_trigger_error_trigger_error', '__return_false' );
+
+		try {
+			$this->assertNull( $bridge->get_secret( self::SECRET_KEY ) );
+			$this->assertNull( $bridge->get_secret( self::SECRET_KEY ) );
+			$this->assertArrayHasKey( self::SECRET_KEY, $bridge->get_unreadable_secrets() );
+			$this->assertCount( 1, $warnings, 'Warns once per request, not on every read.' );
+		} finally {
+			remove_filter( 'option__wp_secret_' . self::SECRET_KEY, $corrupt );
+			remove_action( 'wp_trigger_error_always_run', $capture, 10 );
+			remove_filter( 'wp_trigger_error_trigger_error', '__return_false' );
+		}
+
+		// The secret was never deleted: it reads again once the record is intact.
+		$this->assertSame( 'sk-unreadable', $bridge->get_secret( self::SECRET_KEY ) );
+		$this->assertArrayNotHasKey( self::SECRET_KEY, $bridge->get_unreadable_secrets() );
+		$bridge->delete_secret( self::SECRET_KEY );
+	}
+
+	/**
+	 * Tests that read-time promotion keeps the legacy row when the new secret does not read back.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_promotion_keeps_the_legacy_row_until_it_reads_back(): void {
+		$bridge     = Key_Encryption::get_bridge();
+		$legacy_key = 'ai/readback_key';
+		$legacy_row = '_secret_' . $legacy_key;
+
+		$bridge->is_legacy_provider_available();
+		$this->assertTrue( Secrets::set( $legacy_key, 'sk-readback', self::SECRET_CONTEXT ) );
+
+		// The write succeeds, but the stored record cannot be read back.
+		$corrupt = static function () {
+			return 'not-a-secret-record';
+		};
+
+		add_filter( 'option__wp_secret_' . $legacy_key, $corrupt );
+
+		try {
+			$this->assertSame( 'sk-readback', $bridge->get_secret( $legacy_key ) );
+			$this->assertNotFalse( get_option( $legacy_row, false ), 'The only readable copy must not be deleted.' );
+		} finally {
+			remove_filter( 'option__wp_secret_' . $legacy_key, $corrupt );
+		}
+
+		$bridge->delete_secret( $legacy_key );
+	}
+
+	/**
+	 * Tests that the vendored Secrets API stands down when core provides it.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_vendored_secrets_api_stands_down_on_core(): void {
+		if ( ! file_exists( ABSPATH . WPINC . '/secrets.php' ) ) {
+			$this->markTestSkipped( 'This WordPress version does not include the Secrets API.' );
+		}
+
+		Key_Encryption::get_bridge()->ensure_secrets_api();
+		$this->assertSame( ABSPATH . WPINC . '/secrets.php', ( new \ReflectionFunction( 'wp_get_secret' ) )->getFileName() );
+		$this->assertFalse( class_exists( 'Secrets_API_Prototype_Fallback_Store', false ) );
+	}
+
+	/**
 	 * Returns the decrypted secret value for the test connector, or null if none is stored.
 	 *
 	 * @since 1.1.0

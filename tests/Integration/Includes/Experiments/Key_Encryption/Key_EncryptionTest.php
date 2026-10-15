@@ -568,6 +568,35 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests that set_secret falls back to legacy provider when write_and_verify fails.
+	 *
+	 * @since 1.5.0
+	 */
+	public function test_bridge_set_secret_legacy_fallback_when_write_and_verify_fails(): void {
+		$bridge = Key_Encryption::get_bridge();
+		$key    = 'ai/fallback_key';
+
+		$bridge->is_legacy_provider_available();
+
+		// Make write_and_verify fail by corrupting read-back.
+		$corrupt = static function () {
+			return 'corrupt-readback';
+		};
+		add_filter( 'option__wp_secret_' . $key, $corrupt );
+
+		try {
+			// write_and_verify fails, so it falls back to legacy provider.
+			$this->assertTrue( $bridge->set_secret( $key, 'sk-fallback-value' ) );
+			// Confirm legacy row was written by the legacy fallback.
+			$this->assertNotFalse( get_option( '_secret_' . $key, false ) );
+		} finally {
+			remove_filter( 'option__wp_secret_' . $key, $corrupt );
+		}
+
+		$bridge->delete_secret( $key );
+	}
+
+	/**
 	 * Returns the decrypted secret value for the test connector, or null if none is stored.
 	 *
 	 * @since 1.1.0

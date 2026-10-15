@@ -66,11 +66,14 @@ final class WP_Secrets_Cipher {
 	 * @param string $name       The secret's namespaced name.
 	 * @param string $slot       A WP_Secret_Version constant.
 	 * @param string $plaintext  The value to encrypt.
-	 *
 	 * @return array|WP_Error Slot array with keys 'dk', 'dk_nonce', 'ct', 'nonce',
 	 *                        'fingerprint' on success. WP_Error on failure.
+	 *
+	 * @phpstan-return array{dk: string, dk_nonce: string, ct: string, nonce: string, fingerprint: string}|WP_Error
+	 * @phpstan-param 'site'|'network' $scope
+	 * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $slot
 	 */
-	public function encrypt_value( $master_key, $scope, $site_id, $name, $slot, $plaintext ) {
+	public function encrypt_value( string $master_key, string $scope, int $site_id, string $name, string $slot, $plaintext ) {
 		$check = $this->validate_common( $master_key, $scope, $site_id, $name, $slot );
 
 		if ( is_wp_error( $check ) ) {
@@ -138,10 +141,12 @@ final class WP_Secrets_Cipher {
 	 * @param string $name       Must match what encrypt_value() was called with.
 	 * @param string $slot       Must match what encrypt_value() was called with.
 	 * @param mixed  $record     The slot array previously returned by encrypt_value().
-	 *
 	 * @return string|WP_Error Plaintext on success. WP_Error on failure.
+	 *
+	 * @phpstan-param 'site'|'network' $scope
+	 * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $slot
 	 */
-	public function decrypt_value( $master_key, $scope, $site_id, $name, $slot, $record ) {
+	public function decrypt_value( string $master_key, string $scope, int $site_id, string $name, string $slot, $record ) {
 		$check = $this->validate_common( $master_key, $scope, $site_id, $name, $slot );
 
 		if ( is_wp_error( $check ) ) {
@@ -168,7 +173,7 @@ final class WP_Secrets_Cipher {
 			$master_key
 		);
 
-		if ( false === $data_key ) {
+		if ( ! is_string( $data_key ) ) {
 			return new WP_Error(
 				WP_SECRETS_ERROR_DECRYPTION_FAILED,
 				__( "The secret's data key could not be decrypted.", 'default' )
@@ -184,7 +189,7 @@ final class WP_Secrets_Cipher {
 
 		wp_secrets_memzero( $data_key );
 
-		if ( false === $plaintext ) {
+		if ( ! is_string( $plaintext ) ) {
 			return new WP_Error(
 				WP_SECRETS_ERROR_DECRYPTION_FAILED,
 				__( 'The secret value could not be decrypted.', 'default' )
@@ -201,17 +206,16 @@ final class WP_Secrets_Cipher {
 	 * plaintext fingerprints differently under a different master key. Callers
 	 * verifying a value against a previously stored fingerprint (for example, a
 	 * migration's verify-before-delete step) must recompute this from freshly
-	 * decrypted plaintext and compare -- never trust a fingerprint read back from a
+	 * decrypted plaintext and compare – never trust a fingerprint read back from a
 	 * record, which sits outside the AAD and is not authenticated.
 	 *
 	 * @since 7.2.0
 	 *
 	 * @param string $master_key 32-byte master key.
 	 * @param string $plaintext  Value to fingerprint.
-	 *
 	 * @return string|WP_Error 32-character hex string on success. WP_Error on failure.
 	 */
-	public function fingerprint( $master_key, $plaintext ) {
+	public function fingerprint( string $master_key, $plaintext ) {
 		if ( ! $this->is_valid_master_key( $master_key ) ) {
 			return new WP_Error(
 				WP_SECRETS_ERROR_KEY_UNAVAILABLE,
@@ -249,7 +253,7 @@ final class WP_Secrets_Cipher {
 	 *
 	 * Centralized in one place rather than inlined at each call site, and only ever
 	 * called after validate_common() has confirmed $name passes
-	 * wp_secrets_validate_name() -- the validated character set contains no '|', which
+	 * wp_secrets_validate_name() – the validated character set contains no '|', which
 	 * is what makes this delimiter safe to join on.
 	 *
 	 * @since 7.2.0
@@ -259,18 +263,20 @@ final class WP_Secrets_Cipher {
 	 * @param int    $site_id Blog id for site scope, 0 for network scope.
 	 * @param string $name    Validated secret name.
 	 * @param string $slot    A WP_Secret_Version constant.
-	 *
 	 * @return string
+	 *
+	 * @phpstan-param 'site'|'network' $scope
+	 * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $slot
 	 */
-	private function build_aad( $purpose, $scope, $site_id, $name, $slot ) {
+	private function build_aad( string $purpose, string $scope, int $site_id, string $name, string $slot ): string {
 		return sprintf( '%s|%s|%d|%s|%s', $purpose, $scope, $site_id, $name, $slot );
 	}
 
 	/**
 	 * Validates the parameters shared by encrypt_value() and decrypt_value().
 	 *
-	 * $scope, $site_id, and $slot are never influenced by external input -- every
-	 * call site in this API supplies them internally -- so a bad value here means
+	 * $scope, $site_id, and $slot are never influenced by external input – every
+	 * call site in this API supplies them internally – so a bad value here means
 	 * the calling code is wrong, not that a runtime condition failed. That still
 	 * reports as a WP_Error rather than an exception: WordPress functions return
 	 * WP_Error or false, they do not throw. The _doing_it_wrong() notice is what
@@ -285,15 +291,17 @@ final class WP_Secrets_Cipher {
 	 * @param int    $site_id    Candidate site id.
 	 * @param string $name       Candidate secret name.
 	 * @param string $slot       Candidate slot.
-	 *
 	 * @return true|WP_Error
+	 *
+	 * @phpstan-param 'site'|'network' $scope
+	 * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $slot
 	 */
-	private function validate_common( $master_key, $scope, $site_id, $name, $slot ) {
+	private function validate_common( string $master_key, string $scope, int $site_id, string $name, string $slot ) {
 		if ( ! in_array( $scope, array( 'site', 'network' ), true ) ) {
 			return $this->invalid_argument( __( 'The scope must be "site" or "network".', 'default' ) );
 		}
 
-		if ( ! is_int( $site_id ) || $site_id < 0 ) {
+		if ( $site_id < 0 ) {
 			return $this->invalid_argument( __( 'The site id must be a non-negative integer.', 'default' ) );
 		}
 
@@ -326,10 +334,9 @@ final class WP_Secrets_Cipher {
 	 * @since 7.2.0
 	 *
 	 * @param string $message What the caller got wrong.
-	 *
 	 * @return WP_Error
 	 */
-	private function invalid_argument( $message ) {
+	private function invalid_argument( string $message ): WP_Error {
 		_doing_it_wrong( __CLASS__ . '::encrypt_value()/decrypt_value()', $message, '7.2.0' );
 
 		return new WP_Error( WP_SECRETS_ERROR_INVALID_ARGUMENT, $message );
@@ -340,12 +347,11 @@ final class WP_Secrets_Cipher {
 	 *
 	 * @since 7.2.0
 	 *
-	 * @param mixed $master_key Candidate master key.
-	 *
+	 * @param string $master_key Candidate master key.
 	 * @return bool
 	 */
-	private function is_valid_master_key( $master_key ) {
-		return is_string( $master_key ) && SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_KEYBYTES === strlen( $master_key );
+	private function is_valid_master_key( string $master_key ): bool {
+		return SODIUM_CRYPTO_AEAD_XCHACHA20POLY1305_IETF_KEYBYTES === strlen( $master_key );
 	}
 
 	/**
@@ -354,8 +360,7 @@ final class WP_Secrets_Cipher {
 	 * @since 7.2.0
 	 *
 	 * @param mixed $record Candidate slot array.
-	 *
-	 * @return array|WP_Error Decoded ('dk', 'dk_nonce', 'ct', 'nonce') on success.
+	 * @return array<string, string>|WP_Error Decoded ('dk', 'dk_nonce', 'ct', 'nonce') on success.
 	 */
 	private function decode_record_fields( $record ) {
 		if ( ! is_array( $record ) ) {

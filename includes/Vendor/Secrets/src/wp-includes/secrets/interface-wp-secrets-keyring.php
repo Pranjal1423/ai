@@ -37,10 +37,9 @@ interface WP_Secrets_Keyring {
 	 * @since 7.2.0
 	 *
 	 * @param string $key_material Raw key material to protect.
-	 *
 	 * @return string|WP_Error Opaque wrapped value on success, WP_Error on failure.
 	 */
-	public function wrap( $key_material );
+	public function wrap( string $key_material );
 
 	/**
 	 * Unwraps (decrypts) previously wrapped key material.
@@ -48,10 +47,9 @@ interface WP_Secrets_Keyring {
 	 * @since 7.2.0
 	 *
 	 * @param string $wrapped An opaque value previously returned by wrap().
-	 *
 	 * @return string|WP_Error Raw key material on success, WP_Error on failure.
 	 */
-	public function unwrap( $wrapped );
+	public function unwrap( string $wrapped );
 
 	/**
 	 * A human-readable description of the key source, for Site Health.
@@ -60,5 +58,5 @@ interface WP_Secrets_Keyring {
 	 *
 	 * @return string
 	 */
-	public function get_key_source();
+	public function get_key_source(): string;
 }

@@ -94,10 +94,11 @@ interface WP_Secrets_Provider {
 	 *                        version history returns null for PREVIOUS, which is
 	 *                        absence rather than an error.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
 	 * @return WP_Secret|null|WP_Error
+	 *
+	 * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $version
 	 */
-	public function get( $name, $version, $network = false );
+	public function get( string $name, string $version, bool $network = false );
 
 	/**
 	 * Stores a secret.
@@ -107,11 +108,13 @@ interface WP_Secrets_Provider {
 	 * WP_SECRETS_ERROR_PROVIDER_READ_ONLY, and reports false from is_writable() so
 	 * that callers can find that out without attempting the write first.
 	 *
-	 * Implementations are responsible for firing the `wp_secret_changed` action. The
-	 * API does not fire it on the provider's behalf, because only the provider knows
-	 * the prior fingerprint without paying for an additional read. An audit hook that
+	 * Implementations are responsible for firing the `wp_secret_changed` action once
+	 * the write has succeeded, with `$network` as its last argument. The API does
+	 * not fire it on the provider's behalf, because only the provider knows the
+	 * prior fingerprint without paying for an additional read. An audit hook that
 	 * stopped firing once a host installed a provider would be unreliable in exactly
-	 * the situation it matters most.
+	 * the situation it matters most, so WP_Secrets_Provider_Conformance checks it.
+	 * A write that fails fires nothing.
 	 *
 	 * @since 7.2.0
 	 *
@@ -128,24 +131,26 @@ interface WP_Secrets_Provider {
 	 *                                    `wp_secret_changed`; null means the
 	 *                                    provider decides between 'created' and
 	 *                                    'updated'.
-	 *
 	 * @return true|WP_Error
 	 */
-	public function set( $name, $value, $network = false, $needs_rotation = false, $action = null );
+	public function set( string $name, $value, bool $network = false, bool $needs_rotation = false, ?string $action = null );
 
 	/**
 	 * Deletes a secret.
 	 *
 	 * Deleting a secret that does not exist is a success.
 	 *
+	 * Fires `wp_secret_changed` with the 'deleted' action once a secret has been
+	 * deleted, for the reason given on set(). A provider that can tell nothing was
+	 * there to delete fires nothing.
+	 *
 	 * @since 7.2.0
 	 *
 	 * @param string $name    The secret's name.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
 	 * @return true|WP_Error
 	 */
-	public function delete( $name, $network = false );
+	public function delete( string $name, bool $network = false );
 
 	/**
 	 * Clears a secret's previous version, if this provider keeps one.
@@ -153,14 +158,17 @@ interface WP_Secrets_Provider {
 	 * A provider with no version history treats this as a successful no-op: there
 	 * is nothing to retire, which is the state the caller asked for.
 	 *
+	 * Fires `wp_secret_changed` with the 'retired' action once a previous version
+	 * has been cleared, for the reason given on set(). Nothing fires when there was
+	 * no previous version to clear.
+	 *
 	 * @since 7.2.0
 	 *
 	 * @param string $name    The secret's name.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
 	 * @return true|WP_Error
 	 */
-	public function retire_previous( $name, $network = false );
+	public function retire_previous( string $name, bool $network = false );
 
 	/**
 	 * Lists secrets by name and metadata. Never values.
@@ -170,11 +178,12 @@ interface WP_Secrets_Provider {
 	 * @param string $name_prefix Restrict to names beginning with this prefix, or
 	 *                            '' for all of them.
 	 * @param bool   $network     Whether to list network-scope secrets.
-	 *
 	 * @return array|WP_Error List of arrays with keys 'name', 'fingerprint',
 	 *                        'created', 'has_previous', 'needs_rotation'.
+	 *
+	 * @phpstan-return list<array{name: string, fingerprint: string, created: int, has_previous: bool, needs_rotation: bool}>|WP_Error
 	 */
-	public function list_secrets( $name_prefix = '', $network = false );
+	public function list_secrets( string $name_prefix = '', bool $network = false );
 
 	/**
 	 * A short human-readable name for this provider, for Site Health.
@@ -187,7 +196,7 @@ interface WP_Secrets_Provider {
 	 *
 	 * @return string
 	 */
-	public function get_label();
+	public function get_label(): string;
 
 	/**
 	 * Where secrets this provider holds are actually protected.
@@ -201,8 +210,10 @@ interface WP_Secrets_Provider {
 	 * @since 7.2.0
 	 *
 	 * @return string
+	 *
+	 * @phpstan-return self::BOUNDARY_*
 	 */
-	public function get_protection_boundary();
+	public function get_protection_boundary(): string;
 
 	/**
 	 * Whether wp_set_secret() can succeed against this provider.
@@ -216,5 +227,5 @@ interface WP_Secrets_Provider {
 	 *
 	 * @return bool
 	 */
-	public function is_writable();
+	public function is_writable(): bool;
 }

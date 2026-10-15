@@ -54,8 +54,7 @@ define( 'WP_SECRETS_ERROR_INVALID_VALUE', 'secret_invalid_value' );
 /**
  * A caller passed an argument this API cannot act on.
  *
- * An unrecognized version constant, an invalid scope or slot, or a non-string
- * namespace.
+ * An unrecognized version constant, or an invalid scope, slot, or site id.
  *
  * Distinct from the codes above in cause rather than in severity: those describe
  * a runtime condition a correct caller can still hit (a name that failed
@@ -170,7 +169,7 @@ define( 'WP_SECRETS_CAP_MANAGE_NETWORK', 'manage_network_secrets' );
  *
  * @param string $value The value to clear, by reference.
  */
-function wp_secrets_memzero( &$value ) {
+function wp_secrets_memzero( &$value ): void {
 	if ( ! is_string( $value ) ) {
 		return;
 	}
@@ -223,15 +222,14 @@ function wp_secrets_memzero( &$value ) {
  * @since 7.2.0
  *
  * @param string $name Candidate secret name.
- *
  * @return true|WP_Error True if $name is usable, including the unnamespaced form.
  *                       Otherwise WP_Error with code WP_SECRETS_ERROR_INVALID_NAME.
  */
-function wp_secrets_validate_name( $name ) {
-	if ( ! is_string( $name ) || '' === $name ) {
+function wp_secrets_validate_name( string $name ) {
+	if ( '' === $name ) {
 		return new WP_Error(
 			WP_SECRETS_ERROR_INVALID_NAME,
-			__( 'Secret names must be non-empty strings.', 'default' )
+			__( 'Secret names must not be empty.', 'default' )
 		);
 	}
 
@@ -322,10 +320,10 @@ function wp_secrets_validate_name( $name ) {
  *
  * @return WP_Secrets_Store
  */
-function _wp_secrets_get_store() {
+function _wp_secrets_get_store(): WP_Secrets_Store {
 	static $store = null;
 
-	if ( null !== $store ) {
+	if ( $store instanceof WP_Secrets_Store ) {
 		return $store;
 	}
 
@@ -358,10 +356,10 @@ function _wp_secrets_get_store() {
  *
  * @return WP_Secrets_Key_Manager
  */
-function _wp_secrets_get_key_manager() {
+function _wp_secrets_get_key_manager(): WP_Secrets_Key_Manager {
 	static $key_manager = null;
 
-	if ( null !== $key_manager ) {
+	if ( $key_manager instanceof WP_Secrets_Key_Manager ) {
 		return $key_manager;
 	}
 
@@ -393,7 +391,7 @@ function _wp_secrets_get_key_manager() {
  *
  * @return bool
  */
-function wp_using_secrets_dropin() {
+function wp_using_secrets_dropin(): bool {
 	return ! empty( $GLOBALS['wp_secrets_dropin_loaded'] );
 }
 
@@ -427,10 +425,9 @@ function wp_using_secrets_dropin() {
  *
  * @param string $name  The secret's namespaced name ('plugin-slug/secret-name').
  * @param string $value The plaintext value to store.
- *
  * @return true|WP_Error
  */
-function wp_set_secret( $name, $value ) {
+function wp_set_secret( string $name, $value ) {
 	return _wp_secrets_set( $name, $value, false );
 }
 
@@ -452,14 +449,13 @@ function wp_set_secret( $name, $value ) {
  *
  * @param string $option The existing option's name.
  * @param string $name   The secret's namespaced name to store it under.
- *
  * @return true|WP_Error
  */
-function wp_import_option_as_secret( $option, $name ) {
-	if ( ! is_string( $option ) || '' === $option ) {
+function wp_import_option_as_secret( string $option, string $name ) {
+	if ( '' === $option ) {
 		return new WP_Error(
 			WP_SECRETS_ERROR_INVALID_VALUE,
-			__( 'Option name must be a non-empty string.', 'default' )
+			__( 'The option name must not be empty.', 'default' )
 		);
 	}
 
@@ -495,10 +491,11 @@ function wp_import_option_as_secret( $option, $name ) {
  *
  * @param string $name    The secret's namespaced name.
  * @param string $version A WP_Secret_Version constant. Default WP_Secret_Version::CURRENT.
- *
  * @return WP_Secret|null|WP_Error
+ *
+ * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $version
  */
-function wp_get_secret( $name, $version = WP_Secret_Version::CURRENT ) {
+function wp_get_secret( string $name, string $version = WP_Secret_Version::CURRENT ) {
 	return _wp_secrets_get( $name, $version, false );
 }
 
@@ -508,10 +505,9 @@ function wp_get_secret( $name, $version = WP_Secret_Version::CURRENT ) {
  * @since 7.2.0
  *
  * @param string $name The secret's namespaced name.
- *
  * @return true|WP_Error
  */
-function wp_delete_secret( $name ) {
+function wp_delete_secret( string $name ) {
 	return _wp_secrets_delete( $name, false );
 }
 
@@ -527,10 +523,9 @@ function wp_delete_secret( $name ) {
  * @since 7.2.0
  *
  * @param string $name The secret's namespaced name.
- *
  * @return true|WP_Error
  */
-function wp_retire_secret_version( $name ) {
+function wp_retire_secret_version( string $name ) {
 	return _wp_secrets_retire( $name, false );
 }
 
@@ -544,13 +539,14 @@ function wp_retire_secret_version( $name ) {
  * @since 7.2.0
  *
  * @param string $namespace Only secrets whose name starts with "{$namespace}/" are
- *                           returned. Default '' returns every secret.
- *
+ *                          returned. Default '' returns every secret.
  * @return array|WP_Error Array of associative arrays, each with keys 'name',
  *                        'fingerprint', 'created', 'has_previous', and
  *                        'needs_rotation'.
+ *
+ * @phpstan-return list<array{name: string, fingerprint: string, created: int, has_previous: bool, needs_rotation: bool}>|WP_Error
  */
-function wp_list_secrets( $namespace = '' ) { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.namespaceFound -- $namespace is the parameter name the proposal specifies.
+function wp_list_secrets( string $namespace = '' ) { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.namespaceFound -- $namespace is the parameter name the proposal specifies.
 	return _wp_secrets_list( $namespace, false );
 }
 
@@ -566,10 +562,9 @@ function wp_list_secrets( $namespace = '' ) { // phpcs:ignore Universal.NamingCo
  *
  * @param string $name  The secret's namespaced name.
  * @param string $value The plaintext value to store.
- *
  * @return true|WP_Error
  */
-function wp_set_network_secret( $name, $value ) {
+function wp_set_network_secret( string $name, $value ) {
 	return _wp_secrets_set( $name, $value, true );
 }
 
@@ -580,10 +575,11 @@ function wp_set_network_secret( $name, $value ) {
  *
  * @param string $name    The secret's namespaced name.
  * @param string $version A WP_Secret_Version constant. Default WP_Secret_Version::CURRENT.
- *
  * @return WP_Secret|null|WP_Error
+ *
+ * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $version
  */
-function wp_get_network_secret( $name, $version = WP_Secret_Version::CURRENT ) {
+function wp_get_network_secret( string $name, string $version = WP_Secret_Version::CURRENT ) {
 	return _wp_secrets_get( $name, $version, true );
 }
 
@@ -593,10 +589,9 @@ function wp_get_network_secret( $name, $version = WP_Secret_Version::CURRENT ) {
  * @since 7.2.0
  *
  * @param string $name The secret's namespaced name.
- *
  * @return true|WP_Error
  */
-function wp_delete_network_secret( $name ) {
+function wp_delete_network_secret( string $name ) {
 	return _wp_secrets_delete( $name, true );
 }
 
@@ -606,10 +601,9 @@ function wp_delete_network_secret( $name ) {
  * @since 7.2.0
  *
  * @param string $name The secret's namespaced name.
- *
  * @return true|WP_Error
  */
-function wp_retire_network_secret_version( $name ) {
+function wp_retire_network_secret_version( string $name ) {
 	return _wp_secrets_retire( $name, true );
 }
 
@@ -619,11 +613,12 @@ function wp_retire_network_secret_version( $name ) {
  * @since 7.2.0
  *
  * @param string $namespace Only secrets whose name starts with "{$namespace}/" are
- *                           returned. Default '' returns every network-scope secret.
- *
+ *                          returned. Default '' returns every network-scope secret.
  * @return array|WP_Error
+ *
+ * @phpstan-return list<array{name: string, fingerprint: string, created: int, has_previous: bool, needs_rotation: bool}>|WP_Error
  */
-function wp_list_network_secrets( $namespace = '' ) { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.namespaceFound -- matches wp_list_secrets()'s own signature.
+function wp_list_network_secrets( string $namespace = '' ) { // phpcs:ignore Universal.NamingConventions.NoReservedKeywordParameterNames.namespaceFound -- matches wp_list_secrets()'s own signature.
 	return _wp_secrets_list( $namespace, true );
 }
 
@@ -652,10 +647,10 @@ function wp_list_network_secrets( $namespace = '' ) { // phpcs:ignore Universal.
  *
  * @return WP_Secrets_Provider
  */
-function _wp_secrets_get_provider() {
+function _wp_secrets_get_provider(): WP_Secrets_Provider {
 	static $provider = null;
 
-	if ( null !== $provider ) {
+	if ( $provider instanceof WP_Secrets_Provider ) {
 		return $provider;
 	}
 
@@ -703,7 +698,7 @@ function _wp_secrets_get_provider() {
  *
  * @return bool
  */
-function wp_secrets_provider_is_writable() {
+function wp_secrets_provider_is_writable(): bool {
 	return _wp_secrets_get_provider()->is_writable();
 }
 
@@ -716,7 +711,7 @@ function wp_secrets_provider_is_writable() {
  *
  * @return string
  */
-function wp_secrets_provider_label() {
+function wp_secrets_provider_label(): string {
 	return _wp_secrets_get_provider()->get_label();
 }
 
@@ -731,10 +726,9 @@ function wp_secrets_provider_label() {
  * @param bool        $needs_rotation  Flag the stored secret as needing rotation.
  * @param string|null $action_override Overrides the $action reported to
  *                                     wp_secret_changed.
- *
  * @return true|WP_Error
  */
-function _wp_secrets_set( $name, $value, $network, $needs_rotation = false, $action_override = null ) {
+function _wp_secrets_set( string $name, $value, bool $network, bool $needs_rotation = false, ?string $action_override = null ) {
 	return _wp_secrets_get_provider()->set( $name, $value, $network, $needs_rotation, $action_override );
 }
 
@@ -746,10 +740,11 @@ function _wp_secrets_set( $name, $value, $network, $needs_rotation = false, $act
  * @param string $name    The secret's name.
  * @param string $version A WP_Secret_Version constant.
  * @param bool   $network Whether this is a network-scope secret.
- *
  * @return WP_Secret|null|WP_Error
+ *
+ * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $version
  */
-function _wp_secrets_get( $name, $version, $network ) {
+function _wp_secrets_get( string $name, string $version, bool $network ) {
 	/*
 	 * Checked here rather than inside the provider: this is a contract between
 	 * the API and its caller, and asking every provider to re-validate a core
@@ -779,10 +774,9 @@ function _wp_secrets_get( $name, $version, $network ) {
  *
  * @param string $name    The secret's name.
  * @param bool   $network Whether this is a network-scope secret.
- *
  * @return true|WP_Error
  */
-function _wp_secrets_delete( $name, $network ) {
+function _wp_secrets_delete( string $name, bool $network ) {
 	return _wp_secrets_get_provider()->delete( $name, $network );
 }
 
@@ -793,10 +787,9 @@ function _wp_secrets_delete( $name, $network ) {
  *
  * @param string $name    The secret's name.
  * @param bool   $network Whether this is a network-scope secret.
- *
  * @return true|WP_Error
  */
-function _wp_secrets_retire( $name, $network ) {
+function _wp_secrets_retire( string $name, bool $network ) {
 	return _wp_secrets_get_provider()->retire_previous( $name, $network );
 }
 
@@ -807,23 +800,10 @@ function _wp_secrets_retire( $name, $network ) {
  *
  * @param string $name_prefix Restrict to names beginning with this prefix.
  * @param bool   $network     Whether to list network-scope secrets.
- *
  * @return array|WP_Error
+ *
+ * @phpstan-return list<array{name: string, fingerprint: string, created: int, has_previous: bool, needs_rotation: bool}>|WP_Error
  */
-function _wp_secrets_list( $name_prefix, $network ) {
-	// See _wp_secrets_get() for why this is checked here and not per-provider.
-	if ( ! is_string( $name_prefix ) ) {
-		_doing_it_wrong(
-			__FUNCTION__,
-			__( 'The namespace must be a string.', 'default' ),
-			'7.2.0'
-		);
-
-		return new WP_Error(
-			WP_SECRETS_ERROR_INVALID_ARGUMENT,
-			__( 'The namespace must be a string.', 'default' )
-		);
-	}
-
+function _wp_secrets_list( string $name_prefix, bool $network ) {
 	return _wp_secrets_get_provider()->list_secrets( $name_prefix, $network );
 }

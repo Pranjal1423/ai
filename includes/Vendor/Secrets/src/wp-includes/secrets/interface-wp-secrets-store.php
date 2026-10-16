@@ -35,25 +35,23 @@ interface WP_Secrets_Store {
 	 *
 	 * @param string $name    The secret's namespaced name.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
-	 * @return array|null|WP_Error The record array if it exists. Null if it does not.
+	 * @return array<mixed>|null|WP_Error The record array if it exists. Null if it does not.
 	 *                             WP_Error if it could not be determined which.
 	 */
-	public function get( $name, $network = false );
+	public function get( string $name, bool $network = false );
 
 	/**
 	 * Writes a secret's record.
 	 *
 	 * @since 7.2.0
 	 *
-	 * @param string $name    The secret's namespaced name.
-	 * @param array  $record  The record to store.
-	 * @param bool   $network Whether this is a network-scope secret.
-	 *
+	 * @param string       $name    The secret's namespaced name.
+	 * @param array<mixed> $record  The record to store.
+	 * @param bool         $network Whether this is a network-scope secret.
 	 * @return bool|WP_Error True on success. WP_Error on failure, including when the
 	 *                       store does not accept writes.
 	 */
-	public function set( $name, $record, $network = false );
+	public function set( string $name, array $record, bool $network = false );
 
 	/**
 	 * Deletes a secret's record.
@@ -62,11 +60,10 @@ interface WP_Secrets_Store {
 	 *
 	 * @param string $name    The secret's namespaced name.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
 	 * @return bool|WP_Error True on success (including if it did not exist).
 	 *                       WP_Error on failure.
 	 */
-	public function delete( $name, $network = false );
+	public function delete( string $name, bool $network = false );
 
 	/**
 	 * Lists the names of every secret in this store, for this scope. Never a value.
@@ -74,8 +71,7 @@ interface WP_Secrets_Store {
 	 * @since 7.2.0
 	 *
 	 * @param bool $network Whether to list network-scope secrets.
-	 *
-	 * @return array|WP_Error Array of secret names on success. WP_Error on failure.
+	 * @return string[]|WP_Error Array of secret names on success. WP_Error on failure.
 	 */
-	public function list_names( $network = false );
+	public function list_names( bool $network = false );
 }

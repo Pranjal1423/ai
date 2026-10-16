@@ -26,8 +26,8 @@ if ( ! defined( 'ABSPATH' ) ) {
  * keyring and keeps everything else, and the inverse works too. Coupling them would
  * force an all-or-nothing decision most sites cannot make.
  *
- * - WP_Secrets_Store   -- where the ciphertext records live.
- * - WP_Secrets_Keyring -- what wraps the root key everything else derives from.
+ * - WP_Secrets_Store   – where the ciphertext records live.
+ * - WP_Secrets_Keyring – what wraps the root key everything else derives from.
  *
  * Neither is handed a plaintext, because for this provider the encryption boundary
  * genuinely is inside WordPress. That is a property of *this* implementation rather
@@ -78,7 +78,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 *
 	 * @return string
 	 */
-	public function get_label() {
+	public function get_label(): string {
 		$keyring = $this->key_manager->get_keyring();
 
 		return sprintf(
@@ -94,8 +94,10 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * @since 7.2.0
 	 *
 	 * @return string
+	 *
+	 * @phpstan-return self::BOUNDARY_*
 	 */
-	public function get_protection_boundary() {
+	public function get_protection_boundary(): string {
 		return self::BOUNDARY_WORDPRESS;
 	}
 
@@ -110,7 +112,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 *
 	 * @return bool
 	 */
-	public function is_writable() {
+	public function is_writable(): bool {
 		return true;
 	}
 	/**
@@ -121,7 +123,6 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * @since 7.2.0
 	 *
 	 * @param mixed $record Candidate record.
-	 *
 	 * @return true|WP_Error
 	 */
 	private function validate_record_shape( $record ) {
@@ -160,7 +161,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * change hook. That is not worth refusing the operation over: if the stored record
 	 * is unreadable, overwriting or deleting it is the only repair an operator has
 	 * through this API, and returning WP_Error here would leave a corrupted secret
-	 * permanently stuck -- neither readable, nor fixable, nor removable without editing
+	 * permanently stuck – neither readable, nor fixable, nor removable without editing
 	 * the database by hand.
 	 *
 	 * An unreachable *store* is different, and still aborts: that is an infrastructure
@@ -171,11 +172,11 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * @param WP_Secrets_Store $store   The active store.
 	 * @param string           $name    The secret's namespaced name.
 	 * @param bool             $network Whether this is a network-scope secret.
-	 *
-	 * @return array|null|WP_Error The prior record, null if absent or unreadable, or
-	 *                             WP_Error only if the store itself is unavailable.
+	 * @return array<mixed>|null|WP_Error The prior record, null if absent or unreadable,
+	 *                                    or WP_Error only if the store itself is
+	 *                                    unavailable.
 	 */
-	private function read_prior_record( $store, $name, $network ) {
+	private function read_prior_record( WP_Secrets_Store $store, string $name, bool $network ) {
 		$existing = $store->get( $name, $network );
 
 		if ( is_wp_error( $existing ) ) {
@@ -195,15 +196,30 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * @since 7.2.0
 	 *
 	 * @param mixed $record A record previously read from the store, or null.
-	 *
 	 * @return string The fingerprint, or '' if there is not a usable one.
 	 */
-	private function stored_fingerprint( $record ) {
-		if ( ! is_array( $record ) || ! isset( $record['current']['fingerprint'] ) || ! is_string( $record['current']['fingerprint'] ) ) {
+	private function stored_fingerprint( $record ): string {
+		if ( ! is_array( $record ) || ! isset( $record['current'] ) || ! is_array( $record['current'] ) ) {
 			return '';
 		}
 
-		return $record['current']['fingerprint'];
+		return $this->slot_fingerprint( $record['current'] );
+	}
+
+	/**
+	 * Extracts a single slot's stored fingerprint, if it has one.
+	 *
+	 * @since 7.2.0
+	 *
+	 * @param mixed $slot A slot previously read from the store.
+	 * @return string The fingerprint, or '' if there is not a usable one.
+	 */
+	private function slot_fingerprint( $slot ): string {
+		if ( ! is_array( $slot ) || ! isset( $slot['fingerprint'] ) || ! is_string( $slot['fingerprint'] ) ) {
+			return '';
+		}
+
+		return $slot['fingerprint'];
 	}
 
 	/**
@@ -223,15 +239,17 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * @param string            $scope        'site' or 'network'.
 	 * @param int               $site_id      Blog id for site scope, 0 for network scope.
 	 * @param string            $name         The secret's namespaced name.
-	 * @param array             $current_slot The outgoing current slot, as stored.
-	 *
+	 * @param array<mixed>      $current_slot The outgoing current slot, as stored.
 	 * @return array|WP_Error The same value, re-encrypted and bound to
 	 *                        WP_Secret_Version::PREVIOUS. 'created' and
 	 *                        'needs_rotation' carry over unchanged; 'fingerprint' is
 	 *                        recomputed but identical, since the plaintext and master
 	 *                        key are unchanged.
+	 *
+	 * @phpstan-return array{dk: string, dk_nonce: string, ct: string, nonce: string, fingerprint: string, created: int, needs_rotation: bool}|WP_Error
+	 * @phpstan-param 'site'|'network' $scope
 	 */
-	private function demote_slot( $cipher, $master_key, $scope, $site_id, $name, $current_slot ) {
+	private function demote_slot( WP_Secrets_Cipher $cipher, string $master_key, string $scope, int $site_id, string $name, array $current_slot ) {
 		$plaintext = $cipher->decrypt_value( $master_key, $scope, $site_id, $name, WP_Secret_Version::CURRENT, $current_slot );
 
 		if ( is_wp_error( $plaintext ) ) {
@@ -246,8 +264,8 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 			return $demoted;
 		}
 
-		$demoted['created']        = isset( $current_slot['created'] ) ? $current_slot['created'] : time();
-		$demoted['needs_rotation'] = isset( $current_slot['needs_rotation'] ) ? $current_slot['needs_rotation'] : false;
+		$demoted['created']        = isset( $current_slot['created'] ) && is_int( $current_slot['created'] ) ? $current_slot['created'] : time();
+		$demoted['needs_rotation'] = ! empty( $current_slot['needs_rotation'] );
 
 		return $demoted;
 	}
@@ -271,12 +289,11 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 *                                    fix that.
 	 * @param string|null $action          When given, used as the $action reported to
 	 *                                     the wp_secret_changed hook instead of the
-	 *                                     usual 'created'/'updated' detection --
+	 *                                     usual 'created'/'updated' detection –
 	 *                                     wp_import_option_as_secret() passes 'imported'.
-	 *
 	 * @return true|WP_Error
 	 */
-	public function set( $name, $value, $network = false, $needs_rotation = false, $action = null ) {
+	public function set( string $name, $value, bool $network = false, bool $needs_rotation = false, ?string $action = null ) {
 		$name_check = wp_secrets_validate_name( $name );
 
 		if ( is_wp_error( $name_check ) ) {
@@ -326,19 +343,19 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 
 		/*
 		 * Demotion: the outgoing current slot becomes the new previous slot. Only
-		 * one previous slot is ever kept -- whatever was already in
+		 * one previous slot is ever kept – whatever was already in
 		 * $existing['previous'] is never carried forward, which is what makes a
 		 * third write discard the oldest value rather than accumulating history.
 		 *
 		 * This cannot be a plain array copy. A slot's AAD binds its ciphertext to
-		 * the exact position it occupies -- current or previous -- so a slot moved
+		 * the exact position it occupies – current or previous – so a slot moved
 		 * verbatim would still carry an authentication tag computed for 'current'
 		 * while every future read asks for it under 'previous', and would fail to
 		 * decrypt forever. Demoting requires decrypting under the outgoing binding
 		 * and re-encrypting under the incoming one.
 		 *
-		 * If the outgoing current slot cannot be decrypted at all -- already
-		 * corrupted, or orphaned by a botched key rotation -- it is dropped rather
+		 * If the outgoing current slot cannot be decrypted at all – already
+		 * corrupted, or orphaned by a botched key rotation – it is dropped rather
 		 * than failing this write. The value was already unreadable before this
 		 * call; refusing to let an operator set a new one over it would repeat the
 		 * corrupted-record-blocks-everything failure this API is built to avoid.
@@ -372,11 +389,13 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 		 *
 		 * @param string $name            The secret's namespaced name.
 		 * @param string $action          One of 'created', 'updated', 'deleted',
-		 *                                 'imported', 'retired'.
+		 *                                'imported', 'retired'.
 		 * @param int    $actor_id        The current user id, or 0.
 		 * @param int    $timestamp       Unix timestamp of the change.
 		 * @param string $old_fingerprint The previous fingerprint, or '' if none.
 		 * @param string $new_fingerprint The new fingerprint, or '' if the secret was deleted.
+		 * @param bool   $network         Whether the secret is network-scope. A site-scope
+		 *                                secret belongs to the current site.
 		 */
 		do_action(
 			'wp_secret_changed',
@@ -385,7 +404,8 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 			get_current_user_id(),
 			$new_slot['created'],
 			$old_fingerprint,
-			$new_slot['fingerprint']
+			$new_slot['fingerprint'],
+			$network
 		);
 
 		return true;
@@ -399,10 +419,11 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * @param string $name    The secret's namespaced name.
 	 * @param string $version A WP_Secret_Version constant.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
 	 * @return WP_Secret|null|WP_Error
+	 *
+	 * @phpstan-param WP_Secret_Version::CURRENT|WP_Secret_Version::PREVIOUS $version
 	 */
-	public function get( $name, $version, $network = false ) {
+	public function get( string $name, string $version, bool $network = false ) {
 
 		$name_check = wp_secrets_validate_name( $name );
 
@@ -427,7 +448,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 		}
 
 		if ( ! isset( $record[ $version ] ) || ! is_array( $record[ $version ] ) ) {
-			// The secret exists, but this slot does not. Absence, not an error --
+			// The secret exists, but this slot does not. Absence, not an error –
 			// this matters most for PREVIOUS on a secret that has never been rotated.
 			return null;
 		}
@@ -455,7 +476,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 		 * The stored 'fingerprint' field sits outside the AAD and so is not
 		 * authenticated: anyone who can write to the store can set it to anything
 		 * without disturbing the ciphertext. Trusting it would make
-		 * WP_Secret::fingerprint() attacker-controlled -- which matters most where a
+		 * WP_Secret::fingerprint() attacker-controlled – which matters most where a
 		 * fingerprint comparison gates something irreversible, such as a migration
 		 * verifying a value before deleting its source. The stored copy still exists,
 		 * but only so wp_list_secrets() has something to show without decrypting.
@@ -484,10 +505,9 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 *
 	 * @param string $name    The secret's namespaced name.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
 	 * @return true|WP_Error
 	 */
-	public function delete( $name, $network = false ) {
+	public function delete( string $name, bool $network = false ) {
 		$name_check = wp_secrets_validate_name( $name );
 
 		if ( is_wp_error( $name_check ) ) {
@@ -509,7 +529,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 		}
 
 		if ( is_array( $existing ) ) {
-			/** This action is documented in src/wp-includes/secrets.php */
+			/** This action is documented in wp-includes/secrets/class-wp-secrets-libsodium-provider.php */
 			do_action(
 				'wp_secret_changed',
 				$name,
@@ -517,7 +537,8 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 				get_current_user_id(),
 				time(),
 				$this->stored_fingerprint( $existing ),
-				''
+				'',
+				$network
 			);
 		}
 
@@ -537,10 +558,9 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 *
 	 * @param string $name    The secret's namespaced name.
 	 * @param bool   $network Whether this is a network-scope secret.
-	 *
 	 * @return true|WP_Error
 	 */
-	public function retire_previous( $name, $network = false ) {
+	public function retire_previous( string $name, bool $network = false ) {
 		$name_check = wp_secrets_validate_name( $name );
 
 		if ( is_wp_error( $name_check ) ) {
@@ -556,7 +576,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 
 		if ( null === $record || ! isset( $record['previous'] ) ) {
 			/*
-			 * The goal of retirement -- "there is no previous slot" -- is already
+			 * The goal of retirement – "there is no previous slot" – is already
 			 * true, whether because the secret doesn't exist or because it was
 			 * never rotated. A successful no-op, not an error, and deliberately
 			 * checked before the write-support check below: a store that can't
@@ -566,9 +586,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 			return true;
 		}
 
-		$retired_fingerprint = isset( $record['previous']['fingerprint'] ) && is_string( $record['previous']['fingerprint'] )
-			? $record['previous']['fingerprint']
-			: '';
+		$retired_fingerprint = $this->slot_fingerprint( $record['previous'] );
 
 		unset( $record['previous'] );
 
@@ -578,7 +596,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 			return $result;
 		}
 
-		/** This action is documented in src/wp-includes/secrets.php */
+		/** This action is documented in wp-includes/secrets/class-wp-secrets-libsodium-provider.php */
 		do_action(
 			'wp_secret_changed',
 			$name,
@@ -586,7 +604,8 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 			get_current_user_id(),
 			time(),
 			$retired_fingerprint,
-			''
+			'',
+			$network
 		);
 
 		return true;
@@ -601,7 +620,7 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 *
 	 * Fingerprints returned here come directly from the stored record field, not
 	 * recomputed by decrypting each secret. That is a deliberate difference from
-	 * WP_Secret::fingerprint(), which always recomputes -- recomputing here would mean
+	 * WP_Secret::fingerprint(), which always recomputes – recomputing here would mean
 	 * decrypting every matching secret just to list them, defeating the point of a
 	 * lightweight listing call. This is safe specifically because a list entry is
 	 * documented as informational only and
@@ -611,17 +630,18 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 	 * @since 7.2.0
 	 *
 	 * @param string $name_prefix Only secrets whose name starts with "{$name_prefix}/"
-	 *                             are returned. Default '' returns every secret in this
-	 *                             scope. Named to match the public function's own
-	 *                             $namespace parameter, without using the reserved word
-	 *                             'namespace' in an internal signature.
+	 *                            are returned. Default '' returns every secret in this
+	 *                            scope. Named to match the public function's own
+	 *                            $namespace parameter, without using the reserved word
+	 *                            'namespace' in an internal signature.
 	 * @param bool   $network     Whether to list network-scope secrets.
-	 *
 	 * @return array|WP_Error Array of associative arrays, each with keys 'name',
 	 *                        'fingerprint', 'created', 'has_previous', and
 	 *                        'needs_rotation'. Never a value. WP_Error on failure.
+	 *
+	 * @phpstan-return list<array{name: string, fingerprint: string, created: int, has_previous: bool, needs_rotation: bool}>|WP_Error
 	 */
-	public function list_secrets( $name_prefix = '', $network = false ) {
+	public function list_secrets( string $name_prefix = '', bool $network = false ) {
 
 		$store = $this->store;
 
@@ -634,13 +654,13 @@ final class WP_Secrets_Libsodium_Provider implements WP_Secrets_Provider {
 		$entries = array();
 
 		foreach ( $names as $name ) {
-			if ( '' !== $name_prefix && 0 !== strpos( $name, $name_prefix . '/' ) ) {
+			if ( '' !== $name_prefix && ! str_starts_with( $name, $name_prefix . '/' ) ) {
 				continue;
 			}
 
 			$record = $store->get( $name, $network );
 
-			if ( ! is_wp_error( $record ) && null !== $record && true === $this->validate_record_shape( $record ) ) {
+			if ( ! is_wp_error( $record ) && null !== $record && true === $this->validate_record_shape( $record ) && is_array( $record['current'] ) ) {
 				$entries[] = array(
 					'name'           => $name,
 					'fingerprint'    => $this->stored_fingerprint( $record ),

@@ -32,7 +32,7 @@ if ( ! defined( 'ABSPATH' ) ) {
  *
  * One unwrapped copy of the root key lives in this object for the rest of the
  * request, in memory only, never in the object cache. It is replaced whenever the
- * stored wrapped value changes -- a rotation, a re-wrap, a restore -- so it is never
+ * stored wrapped value changes – a rotation, a re-wrap, a restore – so it is never
  * stale. Callers of get_root_key() still receive a copy and must zero it themselves;
  * this object's own copy is not theirs to zero. The practical effect: a remote
  * keyring (a KMS or HSM call) is invoked once per request, not once per secret.
@@ -130,7 +130,7 @@ final class WP_Secrets_Key_Manager {
 	 *
 	 * @return WP_Secrets_Keyring
 	 */
-	public function get_keyring() {
+	public function get_keyring(): WP_Secrets_Keyring {
 		return $this->keyring;
 	}
 
@@ -142,13 +142,14 @@ final class WP_Secrets_Key_Manager {
 	 * @param string   $scope   'site' or 'network'.
 	 * @param int|null $site_id Blog id for site scope. Defaults to the current blog.
 	 *                          Ignored for network scope.
-	 *
 	 * @return string|WP_Error 32-byte master key on success. WP_Error on failure,
 	 *                         including when a caller passes an invalid scope or
-	 *                         site id -- see WP_Secrets_Cipher::validate_common()
+	 *                         site id – see WP_Secrets_Cipher::validate_common()
 	 *                         for why that is a WP_Error and not an exception.
+	 *
+	 * @phpstan-param 'site'|'network' $scope
 	 */
-	public function get_master_key( $scope, $site_id = null ) {
+	public function get_master_key( string $scope, ?int $site_id = null ) {
 		if ( ! in_array( $scope, array( 'site', 'network' ), true ) ) {
 			$message = __( 'The scope must be "site" or "network".', 'default' );
 
@@ -163,7 +164,7 @@ final class WP_Secrets_Key_Manager {
 		} else {
 			$subkey_id = null === $site_id ? get_current_blog_id() : $site_id;
 
-			if ( ! is_int( $subkey_id ) || $subkey_id < 1 ) {
+			if ( $subkey_id < 1 ) {
 				$message = __( 'The site id must be a positive integer.', 'default' );
 
 				_doing_it_wrong( __METHOD__, $message, '7.2.0' );
@@ -217,7 +218,7 @@ final class WP_Secrets_Key_Manager {
 			);
 		}
 
-		if ( null !== $this->cached_wrapped && $wrapped === $this->cached_wrapped ) {
+		if ( null !== $this->cached_root_key && $wrapped === $this->cached_wrapped ) {
 			return $this->cached_root_key;
 		}
 
@@ -242,7 +243,6 @@ final class WP_Secrets_Key_Manager {
 	 *
 	 * @param WP_Secrets_Keyring $old_keyring Unwraps the current wrapped root key.
 	 * @param WP_Secrets_Keyring $new_keyring Wraps it again for storage.
-	 *
 	 * @return true|WP_Error
 	 */
 	public function rotate_site_key( WP_Secrets_Keyring $old_keyring, WP_Secrets_Keyring $new_keyring ) {
@@ -255,7 +255,7 @@ final class WP_Secrets_Key_Manager {
 			);
 		}
 
-		if ( $old_keyring === $this->keyring && null !== $this->cached_wrapped && $wrapped === $this->cached_wrapped ) {
+		if ( $old_keyring === $this->keyring && null !== $this->cached_root_key && $wrapped === $this->cached_wrapped ) {
 			$root_key = $this->cached_root_key;
 		} else {
 			$root_key = $old_keyring->unwrap( $wrapped );
@@ -275,7 +275,7 @@ final class WP_Secrets_Key_Manager {
 
 		/*
 		 * update_site_option() returns false both on genuine failure and when the
-		 * new value equals the old one -- a documented ambiguity shared with
+		 * new value equals the old one – a documented ambiguity shared with
 		 * update_option(). In practice this never collides here: wrap() draws a
 		 * fresh random nonce every call, so the re-wrapped value is only equal to
 		 * the old one if this call somehow re-wrapped under the exact same nonce,
@@ -310,7 +310,8 @@ final class WP_Secrets_Key_Manager {
 	 *
 	 * @since 7.2.0
 	 *
-	 * @return string|false The wrapped root key, or false if none exists anywhere.
+	 * @return mixed The wrapped root key, or false if none exists anywhere. Anything
+	 *               but a string or false is a corrupt row, which the caller reports.
 	 */
 	private function get_wrapped_root_key() {
 		$wrapped = get_site_option( self::ROOT_KEY_OPTION );

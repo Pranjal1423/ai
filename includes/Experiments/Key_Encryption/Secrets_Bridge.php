@@ -181,6 +181,8 @@ final class Secrets_Bridge {
 
 		$count = 0;
 		foreach ( $this->get_connector_setting_names() as $connector_id => $setting_name ) {
+			// An undecryptable secret is left in place so it can be recovered by restoring the
+			// original keys, rather than blocking the rest of the reversal (or plugin deactivation).
 			$plaintext = $this->get_secret( $this->secret_key( $connector_id ) );
 			if ( null === $plaintext || '' === $plaintext ) {
 				continue;
@@ -199,12 +201,13 @@ final class Secrets_Bridge {
 	/**
 	 * Filter callback for `pre_update_option_{$setting_name}`.
 	 *
-	 * Stores the secret out-of-band and forces the wp_options row to remain empty.
+	 * Stores the secret out-of-band and forces the wp_options row to remain empty. If the secret
+	 * cannot be stored, the value is written as plaintext so the user's key is not lost.
 	 *
 	 * @since 1.1.0
 	 *
 	 * @param mixed $value New value being written.
-	 * @return string Always empty — the real value lives in the secrets store.
+	 * @return string Empty when the value was stored as a secret, otherwise the value itself.
 	 */
 	public function on_write( $value ): string {
 		if ( ! is_string( $value ) || '' === $value ) {
@@ -223,8 +226,13 @@ final class Secrets_Bridge {
 			return $value;
 		}
 
-		$this->set_secret( $this->secret_key( $connector_id ), $value );
-		return '';
+		if ( $this->set_secret( $this->secret_key( $connector_id ), $value ) ) {
+			return '';
+		}
+
+		// Drop any previously stored secret so it cannot shadow the plaintext key on read.
+		$this->delete_secret( $this->secret_key( $connector_id ) );
+		return $value;
 	}
 
 	/**
@@ -420,7 +428,12 @@ final class Secrets_Bridge {
 		}
 
 		if ( $this->is_legacy_provider_available() ) {
-			return Secrets::set( $secret_key, $value, $this->secret_context() );
+			try {
+				return Secrets::set( $secret_key, $value, $this->secret_context() );
+			} catch ( \Throwable $e ) {
+				// The master key can't be decrypted; these writes run inside update_option().
+				return false;
+			}
 		}
 
 		return false;

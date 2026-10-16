@@ -10,8 +10,7 @@ namespace WordPress\AI\Tests\Integration\Admin\Upgrades;
 use WP_UnitTestCase;
 use WordPress\AI\Admin\Upgrades\V1_5_0;
 use WordPress\AI\Experiments\Key_Encryption\Key_Encryption;
-use WordPress\AI\Vendor\Secrets\Secrets;
-use WordPress\AI\Vendor\Secrets\Secrets_Manager;
+use WordPress\AI\Tests\Integration\Includes\Experiments\Key_Encryption\Legacy_Secrets_Helpers;
 
 /**
  * V1_5_0 test case.
@@ -21,6 +20,8 @@ use WordPress\AI\Vendor\Secrets\Secrets_Manager;
  * @since 1.5.0
  */
 class V1_5_0Test extends WP_UnitTestCase {
+
+	use Legacy_Secrets_Helpers;
 
 	private const CONNECTOR_ID = 'testupgrade';
 	private const SECRET_KEY   = 'ai/testupgrade_api_key';
@@ -37,7 +38,6 @@ class V1_5_0Test extends WP_UnitTestCase {
 		if ( function_exists( 'wp_delete_secret' ) ) {
 			wp_delete_secret( self::SECRET_KEY );
 		}
-		Secrets_Manager::reset();
 		parent::tearDown();
 	}
 
@@ -65,10 +65,8 @@ class V1_5_0Test extends WP_UnitTestCase {
 	 * @since 1.5.0
 	 */
 	public function test_run_skips_when_already_upgraded(): void {
-		$bridge = Key_Encryption::get_bridge();
-		$bridge->is_legacy_provider_available();
-		$bridge->is_secrets_manager_available();
-		Secrets::set( self::SECRET_KEY, 'sk-legacy-value', array( 'plugin' => 'ai' ) );
+		Key_Encryption::get_bridge()->ensure_secrets_api();
+		self::set_legacy_secret( self::SECRET_KEY, 'sk-legacy-value' );
 
 		$this->assertTrue( ( new V1_5_0( '1.5.0' ) )->run() );
 
@@ -82,12 +80,8 @@ class V1_5_0Test extends WP_UnitTestCase {
 	 * @since 1.5.0
 	 */
 	public function test_upgrade_migrates_legacy_secret(): void {
-		$bridge = Key_Encryption::get_bridge();
-
-		// Populate a legacy secret directly via internal provider.
-		$bridge->is_legacy_provider_available();
-		$bridge->is_secrets_manager_available();
-		Secrets::set( self::SECRET_KEY, 'sk-legacy-value', array( 'plugin' => 'ai' ) );
+		Key_Encryption::get_bridge()->ensure_secrets_api();
+		self::set_legacy_secret( self::SECRET_KEY, 'sk-legacy-value' );
 
 		$this->assertNotFalse( get_option( self::LEGACY_ROW ) );
 

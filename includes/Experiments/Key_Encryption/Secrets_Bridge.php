@@ -9,11 +9,6 @@ declare( strict_types=1 );
 
 namespace WordPress\AI\Experiments\Key_Encryption;
 
-use WordPress\AI\Vendor\Secrets\Secrets;
-use WordPress\AI\Vendor\Secrets\Secrets_Manager;
-use WordPress\AI\Vendor\Secrets\Secrets_Provider;
-use WordPress\AI\Vendor\Secrets\Secrets_Provider_Encrypted_Options;
-
 use function WordPress\AI\get_ai_connectors;
 
 // Exit if accessed directly.
@@ -24,12 +19,10 @@ defined( 'ABSPATH' ) || exit;
  *
  * Stateless filter handlers; safe to instantiate per request. The class never reaches into
  * connector internals — it relies only on the `authentication.setting_name` field exposed by
- * `get_ai_connectors()` and the vendored {@see \WordPress\AI\Vendor\Secrets\Secrets} facade.
+ * `get_ai_connectors()` and the `wp_*_secret()` functions.
  *
- * Secrets live under the `ai/` namespace and every call passes an explicit `['plugin' => 'ai']`
- * context so the Secrets access-control layer grants self-namespace access regardless of the
- * current user. This matters because these option filters run in unauthenticated contexts
- * (cron, front-end, REST) where no user holds the `manage_secrets` capability.
+ * Secrets live under the `ai/` namespace. Keys stored before 1.5.0 are read once through the
+ * bundled legacy reader and moved to the Secrets API.
  *
  * @since 1.1.0
  */
@@ -41,6 +34,20 @@ final class Secrets_Bridge {
 	 * @since 1.1.0
 	 */
 	public const SECRET_NAMESPACE = 'ai';
+
+	/**
+	 * Option name prefix of the secrets stored before 1.5.0.
+	 *
+	 * @since 1.5.0
+	 */
+	public const LEGACY_OPTION_PREFIX = '_secret_';
+
+	/**
+	 * Option holding the master key of the secrets stored before 1.5.0.
+	 *
+	 * @since 1.5.0
+	 */
+	public const LEGACY_MASTER_KEY_OPTION = '_secrets_master_key';
 
 	/**
 	 * Whether the read filter is currently bypassed.
@@ -324,42 +331,23 @@ final class Secrets_Bridge {
 	}
 
 	/**
-	 * Returns whether a secrets backend can encrypt in this environment.
-	 *
-	 * Returns true if the global Secrets API is available, or if the bundled
-	 * encrypted-options provider can be activated.
+	 * Returns whether the Secrets API is available.
 	 *
 	 * @since 1.1.0
-	 * @since 1.5.0 Supports the global Secrets API when present.
+	 * @since 1.5.0 Uses the Secrets API from core or the bundled copy.
 	 *
-	 * @return bool Whether an encryption provider is available.
+	 * @return bool Whether secrets can be stored.
 	 */
 	public function is_secrets_manager_available(): bool {
 		$this->ensure_secrets_api();
 
-		if ( function_exists( 'wp_get_secret' ) || function_exists( 'wp_set_secret' ) ) {
-			return true;
-		}
-
-		return $this->is_legacy_provider_available();
+		return function_exists( 'wp_get_secret' ) && function_exists( 'wp_set_secret' );
 	}
 
 	/**
-	 * Returns whether the bundled legacy secrets backend can encrypt in this environment.
+	 * Retrieves a secret value from the Secrets API, or from a pre-1.5.0 row.
 	 *
-	 * @since 1.5.0
-	 *
-	 * @return bool Whether the bundled encryption provider is available.
-	 */
-	public function is_legacy_provider_available(): bool {
-		return null !== $this->active_provider();
-	}
-
-	/**
-	 * Retrieves a secret value, preferring the global Secrets API when present,
-	 * falling back to the bundled provider.
-	 *
-	 * Transparently promotes any legacy prototype row to the new API on read.
+	 * A pre-1.5.0 row is moved to the Secrets API on read.
 	 *
 	 * @since 1.5.0
 	 *
@@ -384,22 +372,15 @@ final class Secrets_Bridge {
 			}
 		}
 
-		// If absent in the new API (or Secrets API unavailable), check if legacy store holds it:
-		if ( $this->is_legacy_provider_available() ) {
-			try {
-				$legacy = Secrets::get( $secret_key, $this->secret_context() );
-			} catch ( \Throwable $e ) {
-				$legacy = null;
-			}
+		$legacy = $this->read_legacy_secret( $secret_key );
 
-			if ( null !== $legacy && '' !== $legacy ) {
-				// Promote on read, but never over an unreadable secret, and delete the
-				// legacy row only once the new copy reads back intact.
-				if ( null === $unreadable && $this->write_and_verify( $secret_key, $legacy ) ) {
-					delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
-				}
-				return $legacy;
+		if ( null !== $legacy ) {
+			// Promote on read, but never over an unreadable secret, and delete the
+			// legacy row only once the new copy reads back intact.
+			if ( null === $unreadable && $this->write_and_verify( $secret_key, $legacy ) ) {
+				delete_option( self::LEGACY_OPTION_PREFIX . $secret_key );
 			}
+			return $legacy;
 		}
 
 		if ( null !== $unreadable ) {
@@ -410,37 +391,27 @@ final class Secrets_Bridge {
 	}
 
 	/**
-	 * Stores a secret value, preferring the global Secrets API when present,
-	 * falling back to the bundled provider.
+	 * Stores a secret value in the Secrets API and removes any pre-1.5.0 row.
 	 *
 	 * @since 1.5.0
 	 *
 	 * @param string $secret_key Namespaced secret key.
 	 * @param string $value      Plaintext secret value.
-	 * @return bool True on success, false on failure.
+	 * @return bool True when the secret was stored and reads back intact.
 	 */
 	public function set_secret( string $secret_key, string $value ): bool {
 		$this->ensure_secrets_api();
 
-		if ( $this->write_and_verify( $secret_key, $value ) ) {
-			delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
-			return true;
+		if ( ! $this->write_and_verify( $secret_key, $value ) ) {
+			return false;
 		}
 
-		if ( $this->is_legacy_provider_available() ) {
-			try {
-				return Secrets::set( $secret_key, $value, $this->secret_context() );
-			} catch ( \Throwable $e ) {
-				// The master key can't be decrypted; these writes run inside update_option().
-				return false;
-			}
-		}
-
-		return false;
+		delete_option( self::LEGACY_OPTION_PREFIX . $secret_key );
+		return true;
 	}
 
 	/**
-	 * Deletes a secret from both the global Secrets API (if present) and the bundled provider.
+	 * Deletes a secret from the Secrets API and any pre-1.5.0 row.
 	 *
 	 * @since 1.5.0
 	 *
@@ -459,13 +430,9 @@ final class Secrets_Bridge {
 			}
 		}
 
-		if ( $this->is_legacy_provider_available() ) {
-			if ( Secrets::delete( $secret_key, $this->secret_context() ) ) {
-				$deleted = true;
-			}
+		if ( delete_option( self::LEGACY_OPTION_PREFIX . $secret_key ) ) {
+			$deleted = true;
 		}
-
-		delete_option( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . $secret_key );
 
 		return $deleted;
 	}
@@ -473,8 +440,7 @@ final class Secrets_Bridge {
 	/**
 	 * Migrates any legacy `_secret_ai/*` option rows to the active Secrets API.
 	 *
-	 * Idempotent: safely reads existing ciphertext via the internal provider, stores
-	 * it into the new Secrets API, verifies read-back, and deletes the old option row.
+	 * Idempotent: each row is deleted only once its secret reads back from the Secrets API.
 	 *
 	 * @since 1.5.0
 	 *
@@ -487,13 +453,9 @@ final class Secrets_Bridge {
 			return 0;
 		}
 
-		if ( ! $this->is_legacy_provider_available() ) {
-			return 0;
-		}
-
 		global $wpdb;
 
-		$like = $wpdb->esc_like( Secrets_Provider_Encrypted_Options::OPTION_PREFIX . self::SECRET_NAMESPACE . '/' ) . '%';
+		$like = $wpdb->esc_like( self::LEGACY_OPTION_PREFIX . self::SECRET_NAMESPACE . '/' ) . '%';
 
 		// phpcs:ignore WordPress.DB.DirectDatabaseQuery.DirectQuery, WordPress.DB.DirectDatabaseQuery.NoCaching -- One-time migration query.
 		$option_names = $wpdb->get_col(
@@ -508,18 +470,13 @@ final class Secrets_Bridge {
 		}
 
 		$count         = 0;
-		$prefix_length = strlen( Secrets_Provider_Encrypted_Options::OPTION_PREFIX );
+		$prefix_length = strlen( self::LEGACY_OPTION_PREFIX );
 
 		foreach ( $option_names as $option_name ) {
 			$secret_key = substr( $option_name, $prefix_length );
+			$plaintext  = $this->read_legacy_secret( $secret_key );
 
-			try {
-				$plaintext = Secrets::get( $secret_key, $this->secret_context() );
-			} catch ( \Throwable $e ) {
-				continue;
-			}
-
-			if ( null === $plaintext || '' === $plaintext ) {
+			if ( null === $plaintext ) {
 				continue;
 			}
 
@@ -601,34 +558,31 @@ final class Secrets_Bridge {
 	}
 
 	/**
-	 * Returns the explicit caller context passed to every Secrets operation.
+	 * Decrypts a secret stored before 1.5.0.
 	 *
-	 * @since 1.1.0
+	 * @since 1.5.0
 	 *
-	 * @return array<string, string> The caller context.
+	 * @param string $secret_key Namespaced secret key.
+	 * @return string|null The plaintext, or null when there is no readable row.
 	 */
-	private function secret_context(): array {
-		return array( 'plugin' => self::SECRET_NAMESPACE );
-	}
-
-	/**
-	 * Lazily registers the bundled encryption provider and returns the active provider.
-	 *
-	 * @since 1.1.0
-	 *
-	 * @return \WordPress\AI\Vendor\Secrets\Secrets_Provider|null The active provider, or null.
-	 */
-	private function active_provider(): ?Secrets_Provider {
-		$manager = Secrets_Manager::get_instance();
-
-		if ( null === $manager->get_active_provider_id() ) {
-			if ( null === $manager->get_provider( 'encrypted-options' ) ) {
-				$manager->register_provider( new Secrets_Provider_Encrypted_Options() );
-			}
-			$manager->select_provider();
+	private function read_legacy_secret( string $secret_key ): ?string {
+		if ( false === get_option( self::LEGACY_OPTION_PREFIX . $secret_key, false ) || ! function_exists( 'wp_secrets_memzero' ) ) {
+			return null;
 		}
 
-		return $manager->get_active_provider();
+		// Core doesn't ship the reader, and the Secrets API feature plugin may already have loaded it.
+		if ( ! class_exists( 'Secrets_API_Legacy_Reader' ) ) {
+			require_once dirname( __DIR__, 2 ) . '/Vendor/Secrets/plugin/class-secrets-api-legacy-reader.php';
+		}
+
+		try {
+			$plaintext = ( new \Secrets_API_Legacy_Reader() )->get( $secret_key );
+		} catch ( \Throwable $e ) {
+			// libsodium throws on a malformed key, and these reads run inside get_option().
+			return null;
+		}
+
+		return is_string( $plaintext ) && '' !== $plaintext ? $plaintext : null;
 	}
 
 	/**

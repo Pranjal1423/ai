@@ -42,3 +42,7 @@ The core-bound API implementation and plugin adoption adapters:
 The bundled loader (`load.php`) checks `function_exists( 'wp_get_secret' )` before requiring these files. If WordPress Core (7.2+) or a standalone Secrets API plugin is already active, this bundled copy stands down completely so there is never a function or class redeclaration conflict.
 
 When loaded, it sets `$GLOBALS['wp_secrets_store']` to an instance of `Secrets_API_Prototype_Fallback_Store( new WP_Secrets_Option_Store() )`. This allows existing prototype rows (`_secret_*`) from earlier versions of this plugin to be read and transparently promoted to the current format on first access.
+
+## Keys stored before 1.5.0
+
+The plugin used to bundle the Displace Secrets Manager, which stored keys in `_secret_ai/*` rows. That code is gone. `Secrets_Bridge` reads those rows once with `plugin/class-secrets-api-legacy-reader.php`, which it loads on its own when core provides the Secrets API, and moves each key to the Secrets API.

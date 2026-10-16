@@ -2,11 +2,9 @@
 /**
  * Integration tests for the Key_Encryption experiment.
  *
- * Exercises the experiment end-to-end against the bundled secrets backend (the libsodium-based
- * encrypted-options provider vendored under WordPress\AI\Vendor\Secrets). No global secret
- * functions are stubbed — the real provider encrypts to wp_options and the assertions read back
- * through the {@see Secrets} facade, so these tests prove the encryption round-trip rather than a
- * fake store.
+ * Exercises the experiment end-to-end against the Secrets API (core's, or the bundled copy). No
+ * secret functions are stubbed, so these tests prove the encryption round-trip rather than a fake
+ * store.
  *
  * @package WordPress\AI\Tests\Integration\Experiments
  */
@@ -16,8 +14,7 @@ namespace WordPress\AI\Tests\Integration\Experiments\Key_Encryption;
 use WP_UnitTestCase;
 use WordPress\AI\Admin\Deactivation;
 use WordPress\AI\Experiments\Key_Encryption\Key_Encryption;
-use WordPress\AI\Vendor\Secrets\Secrets;
-use WordPress\AI\Vendor\Secrets\Secrets_Manager;
+use WordPress\AI\Tests\Integration\Includes\Experiments\Key_Encryption\Legacy_Secrets_Helpers;
 
 /**
  * Test case for the Key_Encryption experiment.
@@ -26,6 +23,8 @@ use WordPress\AI\Vendor\Secrets\Secrets_Manager;
  */
 class Key_EncryptionTest extends WP_UnitTestCase {
 
+	use Legacy_Secrets_Helpers;
+
 	private const CONNECTOR_ID  = 'testprovider';
 	private const SETTING_NAME  = 'connectors_ai_testprovider_api_key';
 	private const SECRET_KEY    = 'ai/testprovider_api_key';
@@ -33,32 +32,15 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	private const LEGACY_OPTION = 'wpai_features_enabled';
 
 	/**
-	 * Caller context mirroring the bridge: explicit self-namespace so reads/writes are allowed
-	 * regardless of the (absent) current user in the test runner.
-	 */
-	private const SECRET_CONTEXT = array( 'plugin' => 'ai' );
-
-	/**
 	 * @var \WordPress\AI\Experiments\Key_Encryption\Key_Encryption
 	 */
 	private Key_Encryption $experiment;
-
-	/**
-	 * The `error_log` ini value to restore after a test silenced it.
-	 *
-	 * @var string|null
-	 */
-	private ?string $previous_error_log = null;
 
 	/**
 	 * @since 1.1.0
 	 */
 	public function setUp(): void {
 		parent::setUp();
-
-		// Drop any provider/master-key state cached on the process-wide singleton so each test
-		// starts from a clean keyring against its own (transaction-scoped) options.
-		Secrets_Manager::reset();
 
 		$this->register_test_connector();
 
@@ -85,13 +67,6 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		delete_option( self::TOGGLE );
 		delete_option( self::SETTING_NAME );
 		delete_option( Key_Encryption::RESUME_MIGRATION_OPTION );
-		Secrets_Manager::reset();
-
-		if ( null !== $this->previous_error_log ) {
-			ini_set( 'error_log', $this->previous_error_log ); // phpcs:ignore WordPress.PHP.IniSet.Risky
-			$this->previous_error_log = null;
-		}
-
 		parent::tearDown();
 	}
 
@@ -305,7 +280,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 
 		// After opt-in, the value was migrated to the secret store. Now delete just the secret
 		// to simulate a key that exists only as plaintext (e.g., partial state).
-		Secrets::delete( self::SECRET_KEY, self::SECRET_CONTEXT );
+		Key_Encryption::get_bridge()->delete_secret( self::SECRET_KEY );
 		update_option( self::SETTING_NAME, '' ); // Re-clear the wp_options row to ensure clean state.
 
 		$this->set_raw_option( self::SETTING_NAME, 'sk-fallback' );
@@ -335,17 +310,10 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	public function test_bridge_maybe_migrate_legacy_secrets() {
 		$bridge = Key_Encryption::get_bridge();
 
-		// Setting a legacy secret.
-		$bridge->is_legacy_provider_available();
-		$bridge->is_secrets_manager_available();
-		$this->assertTrue( Secrets::set( self::SECRET_KEY, 'sk-legacy-to-migrate', self::SECRET_CONTEXT ) );
-		$this->assertSame( 'sk-legacy-to-migrate', $bridge->get_secret( self::SECRET_KEY ) );
+		self::set_legacy_secret( self::SECRET_KEY, 'sk-legacy-to-migrate' );
 
-		// Run migration routine.
-		$migrated = $bridge->maybe_migrate_legacy_secrets();
-		$this->assertGreaterThanOrEqual( 0, $migrated );
-
-		// Value is still readable.
+		$this->assertSame( 1, $bridge->maybe_migrate_legacy_secrets() );
+		$this->assertFalse( get_option( '_secret_' . self::SECRET_KEY, false ) );
 		$this->assertSame( 'sk-legacy-to-migrate', $bridge->get_secret( self::SECRET_KEY ) );
 	}
 
@@ -369,9 +337,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		$legacy_key = 'ai/transparent_promo_key';
 		$legacy_row = '_secret_' . $legacy_key;
 
-		$bridge->is_legacy_provider_available();
-		$bridge->is_secrets_manager_available();
-		$this->assertTrue( Secrets::set( $legacy_key, 'sk-transparent-val', self::SECRET_CONTEXT ) );
+		self::set_legacy_secret( $legacy_key, 'sk-transparent-val' );
 		$this->assertNotFalse( get_option( $legacy_row ) );
 
 		// Read via bridge: must transparently promote and clean up legacy row.
@@ -396,8 +362,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		$key = 'ai/overwrite_legacy_key';
 		$legacy_row = '_secret_' . $key;
 
-		$bridge->is_legacy_provider_available();
-		Secrets::set( $key, 'sk-old-val', self::SECRET_CONTEXT );
+		self::set_legacy_secret( $key, 'sk-old-val' );
 		$this->assertNotFalse( get_option( $legacy_row ) );
 
 		// Write new value via set_secret:
@@ -418,8 +383,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		$key = 'ai/delete_all_key';
 		$legacy_row = '_secret_' . $key;
 
-		$bridge->is_legacy_provider_available();
-		Secrets::set( $key, 'sk-val', self::SECRET_CONTEXT );
+		self::set_legacy_secret( $key, 'sk-val' );
 		$bridge->set_secret( $key, 'sk-val' );
 
 		$this->assertTrue( $bridge->delete_secret( $key ) );
@@ -458,8 +422,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		$key = 'ai/legacy_only_delete_key';
 		$legacy_row = '_secret_' . $key;
 
-		$bridge->is_legacy_provider_available();
-		Secrets::set( $key, 'sk-legacy-only', self::SECRET_CONTEXT );
+		self::set_legacy_secret( $key, 'sk-legacy-only' );
 		$this->assertNotFalse( get_option( $legacy_row ) );
 
 		$this->assertTrue( $bridge->delete_secret( $key ) );
@@ -545,8 +508,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		$legacy_key = 'ai/readback_key';
 		$legacy_row = '_secret_' . $legacy_key;
 
-		$bridge->is_legacy_provider_available();
-		$this->assertTrue( Secrets::set( $legacy_key, 'sk-readback', self::SECRET_CONTEXT ) );
+		self::set_legacy_secret( $legacy_key, 'sk-readback' );
 
 		// The write succeeds, but the stored record cannot be read back.
 		$corrupt = static function () {
@@ -581,27 +543,22 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Tests that set_secret falls back to legacy provider when write_and_verify fails.
+	 * Tests that set_secret reports a failure, and writes no legacy row, when the secret does not read back.
 	 *
 	 * @since 1.5.0
 	 */
-	public function test_bridge_set_secret_legacy_fallback_when_write_and_verify_fails(): void {
+	public function test_bridge_set_secret_fails_when_write_and_verify_fails(): void {
 		$bridge = Key_Encryption::get_bridge();
 		$key    = 'ai/fallback_key';
 
-		$bridge->is_legacy_provider_available();
-
-		// Make write_and_verify fail by corrupting read-back.
 		$corrupt = static function () {
 			return 'corrupt-readback';
 		};
 		add_filter( 'option__wp_secret_' . $key, $corrupt );
 
 		try {
-			// write_and_verify fails, so it falls back to legacy provider.
-			$this->assertTrue( $bridge->set_secret( $key, 'sk-fallback-value' ) );
-			// Confirm legacy row was written by the legacy fallback.
-			$this->assertNotFalse( get_option( '_secret_' . $key, false ) );
+			$this->assertFalse( $bridge->set_secret( $key, 'sk-fallback-value' ) );
+			$this->assertFalse( get_option( '_secret_' . $key, false ) );
 		} finally {
 			remove_filter( 'option__wp_secret_' . $key, $corrupt );
 		}
@@ -618,7 +575,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		update_option( self::TOGGLE, true );
 		update_option( self::SETTING_NAME, 'sk-locked' );
 
-		$this->break_master_key();
+		$this->break_root_key();
 
 		// The key reads as unset rather than throwing.
 		$this->assertEmpty( get_option( self::SETTING_NAME ) );
@@ -633,13 +590,13 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		update_option( self::TOGGLE, true );
 		update_option( self::SETTING_NAME, 'sk-locked' );
 
-		$this->break_master_key();
+		$this->break_root_key();
 
 		update_option( self::SETTING_NAME, 'sk-new-key' );
 
 		$this->assertSame( 'sk-new-key', $this->raw_option( self::SETTING_NAME ) );
 		$this->assertSame( 'sk-new-key', get_option( self::SETTING_NAME ) );
-		$this->assertFalse( $this->secret_stored() );
+		$this->assertFalse( get_option( '_wp_secret_' . self::SECRET_KEY, false ), 'The old secret must not shadow the plaintext key.' );
 	}
 
 	/**
@@ -651,7 +608,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		update_option( self::TOGGLE, true );
 		update_option( self::SETTING_NAME, 'sk-locked' );
 
-		$this->break_master_key();
+		$this->break_root_key();
 
 		Deactivation::deactivation_callback();
 
@@ -670,34 +627,26 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 		Deactivation::deactivation_callback();
 		$this->assertSame( 'sk-locked', $this->raw_option( self::SETTING_NAME ) );
 
-		// A master key now exists, so breaking it makes every later encryption attempt fail.
-		$this->break_master_key();
+		// A root key now exists, so breaking it makes every later encryption attempt fail.
+		$this->break_root_key();
 
 		Key_Encryption::flag_resume_migration();
 		Key_Encryption::maybe_resume_migration();
 
 		$this->assertSame( 'sk-locked', $this->raw_option( self::SETTING_NAME ) );
-		$this->assertFalse( $this->secret_stored() );
+		$this->assertFalse( get_option( '_wp_secret_' . self::SECRET_KEY, false ) );
 	}
 
 	/**
-	 * Makes the stored master and root keys undecryptable, as if the key protecting them had changed.
+	 * Makes the stored root key unusable, as if the key protecting it had changed.
 	 *
 	 * @since x.x.x
 	 */
-	private function break_master_key(): void {
-		update_option( '_secrets_master_key', base64_encode( random_bytes( 72 ) ), false ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
+	private function break_root_key(): void {
 		update_site_option( '_wp_secrets_root_key', base64_encode( random_bytes( 72 ) ) ); // phpcs:ignore WordPress.PHP.DiscouragedPHPFunctions.obfuscation_base64_encode
 
 		// The bridge warns about an unreadable secret; keep that out of the test run.
 		add_filter( 'wp_trigger_error_trigger_error', '__return_false' );
-
-		// Drop the decrypted master key cached on the provider.
-		Secrets_Manager::reset();
-
-		// Keep the expected failure log out of the test output.
-		$this->previous_error_log = (string) ini_get( 'error_log' );
-		ini_set( 'error_log', '/dev/null' ); // phpcs:ignore WordPress.PHP.IniSet.Risky
 	}
 
 	/**

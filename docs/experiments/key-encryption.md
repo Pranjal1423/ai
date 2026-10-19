@@ -22,16 +22,8 @@ Encrypting keys at rest raises the cost of **database-level** exposure. It is no
 **Does not protect against** — anything executing inside the WordPress PHP process, or anything that can read the filesystem:
 
 - **Any active plugin, theme, mu-plugin, or drop-in.** WordPress has no privilege separation between them; code execution in any one of them is code execution as the whole site. While the experiment is enabled, `get_option( 'connectors_ai_openai_api_key' )` returns the decrypted key to any in-process caller. That is what "transparent" means, and every existing caller (`Connector_Key_Index`, REST dispatch, the AI client registry) depends on it.
-- **Filesystem read access.** The encryption key is `WP_SECRETS_KEY`, or `LOGGED_IN_KEY . LOGGED_IN_SALT` when that constant is not defined. Both live in `wp-config.php`, so anyone who can read that file can decrypt the `_secret_*` rows directly. Encryption at rest is worth much less against a full filesystem compromise than against a database-only one.
+- **Filesystem read access.** The encryption key is `WP_SECRETS_KEY`, or `LOGGED_IN_KEY . LOGGED_IN_SALT` when that constant is not defined. Both live in `wp-config.php`, so anyone who can read that file can decrypt the `_wp_secret_*` rows directly. Encryption at rest is worth much less against a full filesystem compromise than against a database-only one.
 - **Users who can already see the key.** Anyone able to manage AI settings can read it through the settings screen and the REST API, by design.
-
-### The `plugin` context value is not an authorization boundary
-
-Every call into the bundled SDK passes a caller-asserted context (`[ 'plugin' => 'ai' ]`). The namespace check this feeds is a **collision guard**: it keeps well-behaved plugins out of each other's namespaces and gives the `secrets_access` filter a sensible default to refine. It is not, and cannot be, a boundary between plugins:
-
-- The value is supplied by the caller, so in-process code can assert any namespace it likes.
-- Deriving the caller from a backtrace instead would not change that — in-process code can steer a backtrace, for example by invoking the SDK from a core hook so the nearest frame belongs to whichever file core dispatched from.
-- It would not matter if it could. The same code can read the decrypted value straight out of `get_option()`, decrypt the `_secret_*` row using the salts, or simply return `true` from the `secrets_access` filter.
 
 ## Secrets backend & Secrets API integration
 
@@ -39,13 +31,13 @@ The Key Encryption experiment is built on the [WordPress Secrets API](https://gi
 
 - **Bundled feature plugin:** The experiment bundles the Secrets API runtime in `includes/Vendor/Secrets/`, providing `wp_get_secret()`, `wp_set_secret()`, and `wp_delete_secret()` out of the box with zero external dependencies.
 - **Native core & standalone compatibility:** If WordPress Core (7.2+) or a standalone Secrets API plugin is already present, the bundled loader gracefully stands down and Key Encryption delegates directly to the environment's implementation.
-- **Automated migration:** Existing prototype secrets stored in `_secret_ai/*` are automatically migrated to the new Secrets API upon upgrade (or during read-time promotion), ensuring zero lost keys.
+- **Automated migration:** Keys stored before 1.5.0 in `_secret_ai/*` rows are moved to the Secrets API on upgrade, or on first read. They are read with the bundled read-only `Secrets_API_Legacy_Reader`; the old Displace Secrets Manager code is no longer included.
 
-Secrets are stored under the `ai/` namespace (e.g. `ai/openai_api_key`) with an explicit `['plugin' => 'ai']` context.
+Secrets are stored under the `ai/` namespace (e.g. `ai/openai_api_key`).
 
 ## Requirements
 
-- **libsodium.** The encrypted-options provider needs `sodium_crypto_secretbox()`. This is built
+- **libsodium.** The Secrets API needs libsodium. This is built
   into PHP 7.2+ and WordPress also ships a `sodium_compat` fallback, so it is effectively always
   available. If, in some unusual environment, sodium is unavailable, the experiment fails safe:
   writes pass through unchanged so user keys are never silently dropped (just stored as plaintext,

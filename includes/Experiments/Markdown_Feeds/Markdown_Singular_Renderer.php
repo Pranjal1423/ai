@@ -70,12 +70,12 @@ class Markdown_Singular_Renderer {
 			),
 		);
 
-		$author_name = (string) get_the_author_meta( 'display_name', (int) $post->post_author );
-		if ( '' !== trim( $author_name ) ) {
+		$author_name = trim( (string) get_the_author_meta( 'display_name', (int) $post->post_author ) );
+		if ( '' !== $author_name ) {
 			$meta_lines[] = '- ' . sprintf(
 				/* translators: %s: post author display name. */
 				__( 'Author: %s', 'ai' ),
-				$author_name
+				$this->converter->escape_markdown( $this->converter->decode_entities( $author_name ) )
 			);
 		}
 

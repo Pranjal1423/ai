@@ -59,6 +59,25 @@ class Markdown_Singular_RendererTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests that author display name decodes HTML entities and escapes Markdown syntax.
+	 */
+	public function test_author_meta_escapes_markdown_and_decodes_entities(): void {
+		$user_id = self::factory()->user->create( array( 'display_name' => 'Alice &amp; *Bob*' ) );
+		$post_id = self::factory()->post->create(
+			array(
+				'post_title'  => 'Special Author Post',
+				'post_status' => 'publish',
+				'post_author' => $user_id,
+			)
+		);
+		$post    = get_post( $post_id );
+
+		$markdown = ( new Markdown_Singular_Renderer() )->render( $post );
+
+		$this->assertStringContainsString( '- Author: Alice & \\*Bob\\*', $markdown );
+	}
+
+	/**
 	 * Tests that block markup is rendered (delimiter comments must not leak through).
 	 */
 	public function test_renders_block_content_without_block_comments(): void {

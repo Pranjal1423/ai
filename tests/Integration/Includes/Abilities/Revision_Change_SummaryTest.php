@@ -1021,19 +1021,43 @@ class Revision_Change_SummaryTest extends WP_UnitTestCase {
 		$from = self::factory()->post->create_and_get(
 			array(
 				'post_title'   => 'Same',
-				'post_content' => "<!-- wp:table -->\n<figure class=\"wp-block-table\"><table><tbody><tr><td>Header</td></tr><tr><td>Row 1</td></tr><tr><td>Row 2</td></tr></tbody></table></figure>\n<!-- /wp:table -->",
+				'post_content' => "<!-- wp:table -->\n<figure class=\"wp-block-table\"><table><thead><tr><th>Header 1</th><th>Header 2</th></tr></thead><tbody><tr><td>Row 1 Col 1</td><td>Row 1 Col 2</td></tr><tr><td>Row 2 Col 1</td><td>Row 2 Col 2</td></tr></tbody></table></figure>\n<!-- /wp:table -->",
 			)
 		);
 		$to   = self::factory()->post->create_and_get(
 			array(
 				'post_title'   => 'Same',
-				'post_content' => "<!-- wp:table -->\n<figure class=\"wp-block-table\"><table><tbody><tr><td>Header</td></tr><tr><td>Row 1 modified</td></tr><tr><td>Row 2</td></tr></tbody></table></figure>\n<!-- /wp:table -->",
+				'post_content' => "<!-- wp:table -->\n<figure class=\"wp-block-table\"><table><thead><tr><th>Header 1</th><th>Header 2</th></tr></thead><tbody><tr><td>Row 1 Col 1 modified</td><td>Row 1 Col 2</td></tr><tr><td>Row 2 Col 1</td><td>Row 2 Col 2</td></tr></tbody></table></figure>\n<!-- /wp:table -->",
 			)
 		);
 
 		$diff = $this->invoke( $this->ability, 'build_diff', array( $from, $to ) );
 
-		$this->assertSame( "Content:\n  Header\n- Row 1\n+ Row 1 modified\n  Row 2", $diff );
+		$this->assertSame( "Content:\n  Header 1 Header 2\n- Row 1 Col 1 Row 1 Col 2\n+ Row 1 Col 1 modified Row 1 Col 2\n  Row 2 Col 1 Row 2 Col 2", $diff );
+	}
+
+	/**
+	 * Tests that verse blocks with blank lines and styles with blank lines are not split inappropriately.
+	 *
+	 * @since x.x.x
+	 */
+	public function test_build_diff_preserves_raw_blocks_and_strips_styles_with_blank_lines() {
+		$from = self::factory()->post->create_and_get(
+			array(
+				'post_title'   => 'Same',
+				'post_content' => "<!-- wp:verse -->\n<pre class=\"wp-block-verse\">Line 1\n\nLine 2</pre>\n<!-- /wp:verse -->\n<style>\n.a { color: red; }\n\n.b { color: blue; }\n</style>",
+			)
+		);
+		$to   = self::factory()->post->create_and_get(
+			array(
+				'post_title'   => 'Same',
+				'post_content' => "<!-- wp:verse -->\n<pre class=\"wp-block-verse\">Line 1\n\nLine 2 modified</pre>\n<!-- /wp:verse -->\n<style>\n.a { color: red; }\n\n.b { color: blue; }\n</style>",
+			)
+		);
+
+		$diff = $this->invoke( $this->ability, 'build_diff', array( $from, $to ) );
+
+		$this->assertSame( "Content:\n- Line 1 Line 2\n+ Line 1 Line 2 modified", $diff );
 	}
 
 	/**

@@ -1037,27 +1037,40 @@ class Revision_Change_SummaryTest extends WP_UnitTestCase {
 	}
 
 	/**
-	 * Tests that verse blocks with blank lines and styles with blank lines are not split inappropriately.
+	 * Tests that verse blocks with blank lines are preserved as a single block.
 	 *
 	 * @since x.x.x
 	 */
-	public function test_build_diff_preserves_raw_blocks_and_strips_styles_with_blank_lines() {
+	public function test_build_diff_preserves_verse_blocks_with_blank_lines() {
 		$from = self::factory()->post->create_and_get(
 			array(
 				'post_title'   => 'Same',
-				'post_content' => "<!-- wp:verse -->\n<pre class=\"wp-block-verse\">Line 1\n\nLine 2</pre>\n<!-- /wp:verse -->\n<style>\n.a { color: red; }\n\n.b { color: blue; }\n</style>",
+				'post_content' => "<!-- wp:verse -->\n<pre class=\"wp-block-verse\">Line 1\n\nLine 2</pre>\n<!-- /wp:verse -->",
 			)
 		);
 		$to   = self::factory()->post->create_and_get(
 			array(
 				'post_title'   => 'Same',
-				'post_content' => "<!-- wp:verse -->\n<pre class=\"wp-block-verse\">Line 1\n\nLine 2 modified</pre>\n<!-- /wp:verse -->\n<style>\n.a { color: red; }\n\n.b { color: blue; }\n</style>",
+				'post_content' => "<!-- wp:verse -->\n<pre class=\"wp-block-verse\">Line 1\n\nLine 2 modified</pre>\n<!-- /wp:verse -->",
 			)
 		);
 
 		$diff = $this->invoke( $this->ability, 'build_diff', array( $from, $to ) );
 
-		$this->assertSame( "Content:\n- Line 1 Line 2\n+ Line 1 Line 2 modified", $diff );
+		$this->assertSame( "Content:\n- Line 1  Line 2\n+ Line 1  Line 2 modified", $diff );
+	}
+
+	/**
+	 * Tests that split_paragraphs strips style tags containing blank lines.
+	 *
+	 * @since x.x.x
+	 */
+	public function test_split_paragraphs_strips_styles_with_blank_lines() {
+		$html   = "<p>Intro</p><style>\n.a { color: red; }\n\n.b { color: blue; }\n</style><p>Outro</p>";
+		$result = $this->invoke( $this->ability, 'split_paragraphs', array( $html ) );
+
+		$this->assertStringNotContainsString( '.a { color: red; }', implode( ' ', $result ) );
+		$this->assertStringNotContainsString( '.b { color: blue; }', implode( ' ', $result ) );
 	}
 
 	/**

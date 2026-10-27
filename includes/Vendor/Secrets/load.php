@@ -1,12 +1,14 @@
 <?php
 /**
- * Bootstraps the vendored Secrets API feature plugin.
+ * Loads the vendored copy of core's Secrets API.
  *
  * If WordPress core (7.2+) or the standalone Secrets API feature plugin already
  * provides wp_get_secret(), this loader stands down completely to avoid collision.
+ * Only core's files are loaded, and no store, keyring, or provider is overridden,
+ * so the API behaves here exactly as it does in core.
  *
  * @package WordPress\AI
- * @since 1.5.0
+ * @since x.x.x
  */
 
 declare( strict_types=1 );
@@ -36,15 +38,8 @@ $core_bound = array(
 	'src/wp-includes/secrets/class-wp-secrets-broken-store.php',
 	'src/wp-includes/secrets/class-wp-secrets-libsodium-provider.php',
 	'src/wp-includes/secrets/class-wp-secrets-broken-provider.php',
-	'plugin/class-secrets-api-legacy-reader.php',
-	'plugin/class-secrets-api-prototype-fallback-store.php',
-	'plugin/class-secrets-api-migrator.php',
 );
 
 foreach ( $core_bound as $file ) {
 	require_once __DIR__ . '/' . $file;
-}
-
-if ( ! isset( $GLOBALS['wp_secrets_store'] ) && class_exists( 'Secrets_API_Prototype_Fallback_Store' ) && class_exists( 'WP_Secrets_Option_Store' ) ) {
-	$GLOBALS['wp_secrets_store'] = new \Secrets_API_Prototype_Fallback_Store( new \WP_Secrets_Option_Store() );
 }

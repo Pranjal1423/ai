@@ -2,7 +2,7 @@
 
 This directory contains a copy of the Secrets API runtime, bundled so the Key Encryption experiment works on WordPress versions before 7.2 without requiring users to install a separate plugin. On WordPress 7.2 and later, core provides the API and this copy is never loaded.
 
-- **`src/wp-includes/`:** WordPress core trunk at [r64344](https://core.trac.wordpress.org/changeset/64344) (`7a47d39442` in `wordpress-develop`), which follows the Secrets API's introduction in [r64337](https://core.trac.wordpress.org/changeset/64337) ([#66187](https://core.trac.wordpress.org/ticket/66187)).
+- **`src/wp-includes/`:** WordPress core trunk at [r64690](https://core.trac.wordpress.org/changeset/64690) (`fb78023b06` in `wordpress-develop`), which follows the Secrets API's introduction in [r64337](https://core.trac.wordpress.org/changeset/64337) ([#66187](https://core.trac.wordpress.org/ticket/66187)).
 - **`plugin/`:** [ericmann/secrets-api](https://github.com/ericmann/secrets-api) at `93be262cf25d1a1829ff30edb5881091597d0d76`. These adapters are not part of core.
 - **License:** GPL-2.0-or-later. Original copyright © Eric Mann / WordPress Core Contributors.
 

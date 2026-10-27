@@ -523,7 +523,7 @@ class UninstallTest extends WP_UnitTestCase {
 	/**
 	 * Tests that Secrets API records in the ai namespace are deleted during uninstall.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_uninstall_deletes_secrets_api_secrets(): void {
 		if ( ! function_exists( 'wp_set_secret' ) ) {

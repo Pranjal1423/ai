@@ -290,7 +290,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests Secrets_Bridge get_secret, set_secret, and delete_secret methods.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_get_set_delete() {
 		$bridge = Key_Encryption::get_bridge();
@@ -305,7 +305,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests maybe_migrate_legacy_secrets safely handles legacy rows.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_maybe_migrate_legacy_secrets() {
 		$bridge = Key_Encryption::get_bridge();
@@ -320,7 +320,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests Secrets_Bridge handles absent secrets properly.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_get_secret_returns_null_when_absent(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -330,7 +330,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests Secrets_Bridge transparent read-time promotion from legacy option to Secrets API.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_transparent_read_promotion(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -355,7 +355,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests Secrets_Bridge set_secret clears any existing legacy option.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_set_secret_cleans_legacy_row(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -376,7 +376,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests Secrets_Bridge delete_secret removes both new and legacy rows.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_delete_secret_cleans_all(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -394,7 +394,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests maybe_migrate_legacy_secrets returns 0 when no legacy rows exist.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_maybe_migrate_legacy_secrets_empty(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -404,7 +404,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests Key_Encryption preloaded options and register method.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_experiment_preloaded_options_and_register(): void {
 		$this->assertSame( array( Key_Encryption::RESUME_MIGRATION_OPTION ), $this->experiment->get_preloaded_options() );
@@ -415,7 +415,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests deleting a secret that only exists in the legacy option store.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_delete_secret_legacy_only(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -433,7 +433,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests maybe_migrate_legacy_secrets skips empty or malformed legacy rows.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_maybe_migrate_legacy_secrets_skips_empty(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -449,7 +449,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests ensure_secrets_api is safely callable multiple times.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_ensure_secrets_api_idempotent(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -461,7 +461,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests that a secret core stores but cannot read is reported, not treated as never set.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_reports_an_unreadable_secret(): void {
 		$bridge = Key_Encryption::get_bridge();
@@ -501,7 +501,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests that read-time promotion keeps the legacy row when the new secret does not read back.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_promotion_keeps_the_legacy_row_until_it_reads_back(): void {
 		$bridge     = Key_Encryption::get_bridge();
@@ -530,7 +530,7 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	/**
 	 * Tests that the vendored Secrets API stands down when core provides it.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_vendored_secrets_api_stands_down_on_core(): void {
 		if ( ! file_exists( ABSPATH . WPINC . '/secrets.php' ) ) {
@@ -543,9 +543,25 @@ class Key_EncryptionTest extends WP_UnitTestCase {
 	}
 
 	/**
+	 * Tests that loading the Secrets API leaves the drop-in overrides to a `secrets.php` drop-in.
+	 *
+	 * @since x.x.x
+	 */
+	public function test_secrets_api_load_does_not_override_store_keyring_or_provider(): void {
+		Key_Encryption::get_bridge()->ensure_secrets_api();
+
+		$this->assertTrue( function_exists( 'wp_get_secret' ) );
+		$this->assertArrayNotHasKey( 'wp_secrets_store', $GLOBALS );
+		$this->assertArrayNotHasKey( 'wp_secrets_keyring', $GLOBALS );
+		$this->assertArrayNotHasKey( 'wp_secrets_provider', $GLOBALS );
+		$this->assertFalse( class_exists( 'Secrets_API_Prototype_Fallback_Store', false ) );
+		$this->assertFalse( class_exists( 'Secrets_API_Migrator', false ) );
+	}
+
+	/**
 	 * Tests that set_secret reports a failure, and writes no legacy row, when the secret does not read back.
 	 *
-	 * @since 1.5.0
+	 * @since x.x.x
 	 */
 	public function test_bridge_set_secret_fails_when_write_and_verify_fails(): void {
 		$bridge = Key_Encryption::get_bridge();
